@@ -1,0 +1,14 @@
+
+{
+  "Name": "DraftMode ToU:M",
+  "Description": "A Mod that adds Draft Mode for players to choose their own role",
+  "Icon": "DraftModeTOUM.Resources.DraftLogo.png",
+  "License": "GPLv3",
+  "Authors": [
+    "Ninja-AU",
+    "IdkImNeil"
+  ],
+  "Links": {
+    "Source": "https://github.com/Ninja-AU/DraftModeTOUM"
+  }
+}
