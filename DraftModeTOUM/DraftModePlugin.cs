@@ -50,7 +50,7 @@ namespace DraftModeTOUM
 
         internal static class PluginInfo
         {
-            public const string PLUGIN_GUID = "com.draftmodetoun.mod";
+            public const string PLUGIN_GUID = "com.draftmodetoum.mod";
             public const string PLUGIN_NAME = "DraftModeTOUM";
             public const string PLUGIN_VERSION = "1.0.8";
         }
