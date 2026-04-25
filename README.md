@@ -6,7 +6,7 @@ A [BepInEx](https://github.com/BepInEx/BepInEx) mod for **Among Us** running [To
 
 <div align="center">
   <a href="https://github.com/ninja-au/DraftModeTOUM/releases/"> <img alt="Latest Release" src="https://badgen.net/github/release/ninja-au/DraftModeTOUM?icon=github"></a>
-  <a href="https://github.com/ninja-au/DraftModeTOUM/releases"> <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/idkimneil/DraftMode-TOUM/total"></a>
+  <a href="https://github.com/ninja-au/DraftModeTOUM/releases"> <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/idkimneil/DraftMode-TOUm/total"></a>
   <a href="https://discord.gg/vHdyRs8dfu"> <img alt="Mod Discord" src="https://img.shields.io/discord/1279057211339051079.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2"></a>
 </div>
 <br/>
