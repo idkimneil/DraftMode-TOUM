@@ -6,7 +6,7 @@ A [BepInEx](https://github.com/BepInEx/BepInEx) mod for **Among Us** running [To
 
 <div align="center">
   <a href="https://github.com/idkimneil/DraftMode-TOUM/releases/"> <img alt="Latest Release" src="https://badgen.net/github/release/idkimneil/DraftMode-TOUM?icon=github"></a>
-  <a href="https://github.com/idkimneil/DraftMode-TOUM/releases"> <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/idkimneil/DraftMode-TOUM/total"></a>
+  <a href="https://github.com/idkimneil/DraftMode-TOUM/releases"> <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/idkimneil/DraftMode-TOUm/total"></a>
  
 </div>
 <br/>
