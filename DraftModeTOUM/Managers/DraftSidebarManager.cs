@@ -20,18 +20,30 @@ namespace DraftModeTOUM.Managers
         private static readonly string ColDisconnected = "#ffffffff";
         private static readonly string ColHeader       = "#e7a6ffff";
         private static readonly string ColPlayerName   = "#ffdd00ff";
-        private static readonly string ColLocalPlayer  = "#8bd5f9ff";
+        private static readonly string ColLocalPlayer  = "#91daffff";
 
         public static void Activate()
         {
             if (!IsSettingEnabled()) return;
             _active = true;
+
+            // Disable the hover tooltip component so it doesn't show role tooltips during draft
+            var hoverComp = HudManager.Instance?.gameObject.GetComponent<RoleListHoverComponent>();
+            if (hoverComp != null)
+                hoverComp.enabled = false;
+
             DraftModePlugin.Logger.LogInfo("[DraftSidebar] Activated.");
         }
 
         public static void Deactivate()
         {
             _active = false;
+
+            // Re-enable the hover tooltip component
+            var hoverComp = HudManager.Instance?.gameObject.GetComponent<RoleListHoverComponent>();
+            if (hoverComp != null)
+                hoverComp.enabled = true;
+
             DraftModePlugin.Logger.LogInfo("[DraftSidebar] Deactivated.");
         }
 
@@ -39,6 +51,10 @@ namespace DraftModeTOUM.Managers
 
         public static void DrawSidebar()
         {
+            // Only show in lobby — UpdateRoleList already hid RoleList before we run,
+            // so if we're not in the lobby we must not force it back on.
+            if (!LobbyBehaviour.Instance) return;
+
             var roleList = HudManagerPatches.RoleList;
             var tmp      = HudManagerPatches.RoleListTextComp;
             if (roleList == null || tmp == null) return;

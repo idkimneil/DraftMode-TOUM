@@ -43,12 +43,12 @@ public sealed class DraftModeOptions : AbstractOptionGroup
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
     };
 
-    public ModdedNumberOption TurnDurationSeconds { get; set; } = new("Turn Duration", 10f, 5f, 60f, 1f, MiraNumberSuffixes.None, "0")
+    public ModdedNumberOption TurnDurationSeconds { get; set; } = new("Turn Duration", 10f, 5f, 60f, 1f, MiraNumberSuffixes.Seconds, "0")
     {
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
     };
 
-    public ModdedNumberOption ConcurrentPicks { get; set; } = new("Concurrent Picks Per Turn", 1f, 1f, 2f, 1f, MiraNumberSuffixes.Seconds, "0")
+    public ModdedNumberOption ConcurrentPicks { get; set; } = new("Concurrent Picks Per Turn", 1f, 1f, 2f, 1f, MiraNumberSuffixes.None, "0")
     {
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
     };

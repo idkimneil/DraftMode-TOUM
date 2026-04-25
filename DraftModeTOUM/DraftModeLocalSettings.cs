@@ -35,7 +35,7 @@ public sealed class DraftModeLocalSettings(ConfigFile config) : LocalSettingsTab
 
     [LocalToggleSetting]
     public ConfigEntry<bool> HideHudDuringDraft { get; private set; } =
-        config.Bind("UI", "Hide HUD During Draft", true);
+        config.Bind("UI", "Hide HUD During Draft", false);
 
     [LocalToggleSetting]
     public ConfigEntry<bool> ShowDraftSidebar { get; private set; } =
