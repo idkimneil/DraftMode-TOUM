@@ -21,8 +21,7 @@ public sealed class DraftModeLocalSettings(ConfigFile config) : LocalSettingsTab
     public override LocalSettingTabAppearance TabAppearance => new()
     {
         TabIcon = DraftAssets.DraftIcon,
-        TabColor = Color.green,
-        TabButtonHoverColor = Color.cyan,
+        TabButtonHoverColor = Color.green,
         TabButtonActiveColor = Color.cyan,
     };
 
@@ -37,4 +36,8 @@ public sealed class DraftModeLocalSettings(ConfigFile config) : LocalSettingsTab
     [LocalToggleSetting]
     public ConfigEntry<bool> HideHudDuringDraft { get; private set; } =
         config.Bind("UI", "Hide HUD During Draft", true);
+
+    [LocalToggleSetting]
+    public ConfigEntry<bool> ShowDraftSidebar { get; private set; } =
+        config.Bind("UI", "Show Draft Sidebar", true);
 }

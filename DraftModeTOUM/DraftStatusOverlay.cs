@@ -43,7 +43,7 @@ namespace DraftModeTOUM
 
         private static readonly Color WaitingBgColor = new Color(0f, 0f, 0f, 1f);
 
-        private static readonly Vector3 CardHudPos = new Vector3(-2.0f, 0.3f, -21f);
+        private static readonly Vector3 CardHudPos = new Vector3(2.0f, 0.3f, -21f);
         private const float CardScale              = 0.55f;
         private const float CardTiltDeg            = -8f;
         private const float TeamNameFontSize       = 3.8f;
