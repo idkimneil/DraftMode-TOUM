@@ -92,7 +92,9 @@ Each player can toggle whether they hear audio for when the draft starts, and mo
 
 | Setting       | Description |
 |---------------|-------------|
-| Audio Setting | • No Sound – Disables all audio.<br>• Sound on Draft Start – Plays a sound when the draft phase begins.<br>• Sound on Turn Start – Plays a sound at the start of each turn. |
+| Audio | • No Sound – Disables all audio.<br>• Sound on Draft Start – Plays a sound when the draft phase begins.<br>• Sound on Turn Start – Plays a sound at the start of each turn. |
+|---------------|-------------|
+| UI | • Show Draft Sidebar – Turns Role List into a Draft Player List <br>• Hide HUD Buttons – Hides all the Top Right UI Buttons During Draft |
 
 ---
 
