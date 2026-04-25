@@ -80,7 +80,7 @@ Key settings:
 
 After every player has picked, a **Draft Recap** is shown on screen for all players, listing each pick slot and the role they chose. Role names are color-coded by their in-game color for easy readability.
 
-![Draft Recap](screenshots/recap.png)
+![Draft Recap](screenshots/draft-recap.png)
 
 The recap can be toggled off so roles stay secret — only the player who picked knows what they got. To toggle it, the host can use the **Show Draft Recap** option in settings
 
