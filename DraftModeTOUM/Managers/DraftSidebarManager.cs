@@ -20,29 +20,35 @@ namespace DraftModeTOUM.Managers
         private static readonly string ColDisconnected = "#ffffffff";
         private static readonly string ColHeader       = "#e7a6ffff";
         private static readonly string ColPlayerName   = "#ffdd00ff";
-        private static readonly string ColLocalPlayer  = "#91daffff";
+        private static readonly string ColLocalPlayer  = "#8bd5f9ff";
 
         public static void Activate()
         {
             if (!IsSettingEnabled()) return;
             _active = true;
-
-            // Disable the hover tooltip component so it doesn't show role tooltips during draft
-            var hoverComp = HudManager.Instance?.gameObject.GetComponent<RoleListHoverComponent>();
-            if (hoverComp != null)
-                hoverComp.enabled = false;
-
             DraftModePlugin.Logger.LogInfo("[DraftSidebar] Activated.");
         }
 
         public static void Deactivate()
         {
+            if (!_active) return; // guard against repeated/redundant calls
             _active = false;
 
-            // Re-enable the hover tooltip component
-            var hoverComp = HudManager.Instance?.gameObject.GetComponent<RoleListHoverComponent>();
-            if (hoverComp != null)
-                hoverComp.enabled = true;
+            // Clear the text we wrote so TOU-Mira's UpdateRoleList reclaims the panel
+            // on its next tick and shows the normal role/neutral list again.
+            var tmp = HudManagerPatches.RoleListTextComp;
+            if (tmp != null)
+                tmp.text = string.Empty;
+
+            // Also hide the panel so TOU-Mira can restore it properly on next Update tick.
+            var roleList = HudManagerPatches.RoleList;
+            if (roleList != null)
+                roleList.SetActive(false);
+
+            // Make sure IsHoveringRoleList is not stuck true — that would prevent
+            // TOU-Mira's UpdateRoleList from writing new text (HudManagerPatches line ~926:
+            // "if (!IsHoveringRoleList) RoleListTextComp.text = ...").
+            HudManagerPatches.IsHoveringRoleList = false;
 
             DraftModePlugin.Logger.LogInfo("[DraftSidebar] Deactivated.");
         }
@@ -51,10 +57,6 @@ namespace DraftModeTOUM.Managers
 
         public static void DrawSidebar()
         {
-            // Only show in lobby — UpdateRoleList already hid RoleList before we run,
-            // so if we're not in the lobby we must not force it back on.
-            if (!LobbyBehaviour.Instance) return;
-
             var roleList = HudManagerPatches.RoleList;
             var tmp      = HudManagerPatches.RoleListTextComp;
             if (roleList == null || tmp == null) return;
@@ -124,7 +126,7 @@ namespace DraftModeTOUM.Managers
             if (state.HasPicked)
                 return $"has picked <color={ColCrewmate}>CREWMATE</color>";
 
-            return $"<color={ColWaiting}>waiting for a turn</color>";
+            return $"<color={ColWaiting}>is waiting for turn</color>";
         }
 
         private static RoleFaction GetFactionForRole(ushort roleId)
@@ -180,10 +182,69 @@ namespace DraftModeTOUM.Managers
         public static void Postfix() => DraftSidebarManager.Deactivate();
     }
 
+    /// <summary>
+    /// Catches all draft-end paths on both host and client:
+    /// - Normal completion → SetState(Hidden) via CoEndDraftSequence
+    /// - Cancel → already caught above, but this is a universal safety net
+    /// Every exit path transitions the overlay to Hidden, so this is reliable.
+    /// </summary>
+    [HarmonyPatch(typeof(DraftStatusOverlay), nameof(DraftStatusOverlay.SetState))]
+    public static class DraftSidebarDeactivateOnOverlayHidden
+    {
+        [HarmonyPostfix]
+        public static void Postfix(OverlayState state)
+        {
+            if (state == OverlayState.Hidden)
+                DraftSidebarManager.Deactivate();
+        }
+    }
+
+    /// <summary>
+    /// Belt-and-suspenders: deactivate when the game actually starts
+    /// so the sidebar never leaks into in-game.
+    /// </summary>
+    [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CoBegin))]
+    public static class DraftSidebarDeactivateOnIntro
+    {
+        [HarmonyPostfix]
+        public static void Postfix() => DraftSidebarManager.Deactivate();
+    }
+
     [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnDisconnected))]
     public static class DraftSidebarDeactivateOnDisconnect
     {
         [HarmonyPostfix]
         public static void Postfix() => DraftSidebarManager.Deactivate();
+    }
+
+    // ── RoleListHoverComponent suppression ────────────────────────────────────
+    //
+    // RoleListHoverComponent lives on HudManager.Instance.gameObject and drives
+    // the "hover the role list panel to show bucket tooltips" feature.
+    // It sets HudManagerPatches.IsHoveringRoleList = true while the mouse is
+    // over the panel, which blocks UpdateRoleList from writing new text
+    // (HudManagerPatches.UpdateRoleList: "if (!IsHoveringRoleList) text = ...").
+    //
+    // During draft we own the role list panel for the sidebar, so we patch
+    // RoleListHoverComponent.Update: when a draft is active the original is
+    // skipped and IsHoveringRoleList is forced to false, ensuring our
+    // DrawSidebar() postfix is never blocked.
+    //
+    // OnEnable is NOT patched here — it is inherited from MonoBehaviour and
+    // Harmony cannot patch inherited methods via the subtype.
+
+    [HarmonyPatch(typeof(RoleListHoverComponent), nameof(RoleListHoverComponent.Update))]
+    public static class RoleListHoverSuppressUpdate
+    {
+        [HarmonyPrefix]
+        public static bool Prefix()
+        {
+            if (!DraftManager.IsDraftActive) return true; // run normally outside draft
+
+            // Draft is active: prevent hover detection and clear any stale flag so
+            // our DrawSidebar postfix is never blocked by UpdateRoleList's guard.
+            HudManagerPatches.IsHoveringRoleList = false;
+            return false; // skip original Update
+        }
     }
 }
