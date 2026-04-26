@@ -2,6 +2,7 @@
 using Reactor.Utilities.Attributes;
 using System.Collections;
 using System.Collections.Generic;
+using HarmonyLib;
 using TMPro;
 using TownOfUs.Assets;
 using TownOfUs.Utilities;
@@ -100,7 +101,7 @@ namespace DraftModeTOUM
             _cachedRolePrefab           = null;
         }
 
-        
+        // ── Lifecycle ─────────────────────────────────────────────────────────
 
         private void Awake()
         {
@@ -115,7 +116,7 @@ namespace DraftModeTOUM
             if (_instance == this) _instance = null;
         }
 
-        
+        // ── UI construction ───────────────────────────────────────────────────
 
         private void BuildUI()
         {
@@ -161,7 +162,7 @@ namespace DraftModeTOUM
             _root.SetActive(false);
         }
 
-        
+        // ── Role prefab ───────────────────────────────────────────────────────
 
         private static bool EnsureRolePrefab()
         {
@@ -184,7 +185,7 @@ namespace DraftModeTOUM
             }
         }
 
-        
+        // ── Role card ─────────────────────────────────────────────────────────
 
         private void ShowRoleCard(ushort roleId)
         {
@@ -278,7 +279,7 @@ namespace DraftModeTOUM
             Coroutines.Start(CoPopInCard(_roleCardNewRoleObj.transform));
         }
 
-        
+        // ── Wiki ──────────────────────────────────────────────────────────────
 
         private void OpenWiki(ushort roleId)
         {
@@ -319,35 +320,29 @@ namespace DraftModeTOUM
 
         // ── Menu detection ────────────────────────────────────────────────────
 
-        /// Returns true when any overlay or menu that should hide the role card is open.
         private static bool IsAnyMenuOpen()
         {
             try
             {
-                // Vanilla menus
-                if (Minigame.Instance != null)            return true;
+                if (Minigame.Instance != null)                return true;
                 if (PlayerCustomizationMenu.Instance != null) return true;
-                if (GameSettingMenu.Instance != null)     return true;
+                if (GameSettingMenu.Instance != null)         return true;
 
-                // HudManager menus
                 var hud = HudManager.Instance;
                 if (hud != null)
                 {
-                    if (hud.GameMenu != null && hud.GameMenu.IsOpen) return true;
-                    if (hud.Chat != null && hud.Chat.IsOpenOrOpening) return true;
+                    if (hud.GameMenu != null && hud.GameMenu.IsOpen)         return true;
+                    if (hud.Chat != null && hud.Chat.IsOpenOrOpening)        return true;
                 }
 
-                // Friends list
                 if (FriendsListUI.Instance != null && FriendsListUI.Instance.IsOpen) return true;
-
-
             }
             catch { }
 
             return false;
         }
 
-        
+        // ── Role card helpers ─────────────────────────────────────────────────
 
         private void DestroyRoleCard()
         {
@@ -388,7 +383,7 @@ namespace DraftModeTOUM
             return Color.white;
         }
 
-        
+        // ── Update ────────────────────────────────────────────────────────────
 
         private void Update()
         {
@@ -500,6 +495,8 @@ namespace DraftModeTOUM
             }
         }
 
+        // ── HUD element hiding ────────────────────────────────────────────────
+
         private void HideHudElements()
         {
             _hiddenHudChildren.RemoveAll(go => go == null);
@@ -529,6 +526,8 @@ namespace DraftModeTOUM
             _hiddenHudChildren.Clear();
         }
 
+        // ── Text factory ──────────────────────────────────────────────────────
+
         private static TextMeshPro MakeText(
             GameObject parent, string name,
             TMP_FontAsset font, Material fontMat,
@@ -554,6 +553,8 @@ namespace DraftModeTOUM
             return tmp;
         }
 
+        // ── White sprite factory ──────────────────────────────────────────────
+
         private static Sprite? _white;
         private static Sprite MakeWhiteSprite()
         {
@@ -567,6 +568,46 @@ namespace DraftModeTOUM
             _white           = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
             _white.hideFlags = HideFlags.HideAndDontSave;
             return _white;
+        }
+    }
+
+    // ── PingTracker Harmony patches ───────────────────────────────────────────
+    //
+    // Harmony postfix execution order: HIGHER priority number runs FIRST.
+    //   Priority.First = 800  (us, prefix — skips vanilla Update)
+    //   Priority.Last  = 0    (Reactor and TOU-Mira postfixes append text here)
+    //   int.MinValue          (our postfix — guaranteed to run dead last, wipes text)
+    //
+    // Two separate patch classes are used because Harmony does not support
+    // mixing [HarmonyPrefix] and [HarmonyPostfix] with different priorities
+    // inside the same class reliably across all versions.
+
+    [HarmonyPatch(typeof(PingTracker), nameof(PingTracker.Update))]
+    public static class PingTrackerDraftPrefix
+    {
+        // Runs before everything — skips the vanilla Update so "PING: X ms"
+        // is never written while draft is active.
+        [HarmonyPrefix]
+        [HarmonyPriority(Priority.First)]
+        public static bool Prefix()
+        {
+            return !DraftManager.IsDraftActive; // false = skip original
+        }
+    }
+
+    [HarmonyPatch(typeof(PingTracker), nameof(PingTracker.Update))]
+    public static class PingTrackerDraftPostfix
+    {
+        // int.MinValue is lower than Priority.Last (0), so this postfix runs
+        // after Reactor's and TOU-Mira's Priority.Last postfixes have both
+        // finished appending their mod-list and region text, then wipes it all.
+        [HarmonyPostfix]
+        [HarmonyPriority(int.MinValue)]
+        public static void Postfix(PingTracker __instance)
+        {
+            if (!DraftManager.IsDraftActive) return;
+            if (__instance.text != null)
+                __instance.text.text = string.Empty;
         }
     }
 }

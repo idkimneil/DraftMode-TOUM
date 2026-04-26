@@ -11,6 +11,7 @@ using TownOfUs.Utilities;
 using UnityEngine;
 using UnityEngine.Events;
 
+
 namespace DraftModeTOUM
 {
     [RegisterInIl2Cpp]
@@ -21,12 +22,12 @@ namespace DraftModeTOUM
         private GameObject _screenRoot;
         private ushort[] _offeredRoleIds;
         private bool _hasPicked;
-        private TextMeshPro _statusText;
+        private TextMeshPro _statusText;      // "Pick Your Role!" — top, kept as-is
+        private TextMeshPro _timerText;       // "# seconds remain" — bottom center, new
+        private GameObject _timerRoot;        // holder for the bottom timer labe
 
         private const string PrefabName = "SelectRoleGame";
         private const float TeamNameFontSize = 3.8f;
-
-
        private static float CardScaleForCount(int count) => count switch
         {
             <= 3 => 0.55f,
@@ -38,31 +39,68 @@ namespace DraftModeTOUM
             _    => 0.55f,
         };
 
-        
-        
         private static float SpacingForCount(int count) => count switch
         {
             <= 3 => -1f,
             <= 4 => -1f,
             <= 5 => -1f,
-            <= 6 => 0f,   
-            <= 8 => 0f,  
-            _    => 0f,   
+            <= 6 => 0f,
+            <= 8 => 0f,
+            _    => 0f,
         };
 
         private static Color GetTeamColor(string teamName)
-{
-    if (string.IsNullOrEmpty(teamName)) return Color.white;
+        {
+            if (string.IsNullOrEmpty(teamName)) return Color.white;
+            string lower = teamName.ToLowerInvariant();
+            if (lower.Contains("crewmate")) return new Color32(0,   255, 255, 255);
+            if (lower.Contains("impostor") ||
+                lower.Contains("imposter")) return new Color32(255,   0,   0, 255);
+            if (lower.Contains("neutral"))  return new Color32(180, 180, 180, 255);
+            return Color.white;
+        }
 
-    string lower = teamName.ToLowerInvariant();
-    if (lower.Contains("crewmate")) return new Color32(0,   255, 255, 255);
-    if (lower.Contains("impostor") ||
-        lower.Contains("imposter")) return new Color32(255,   0,   0, 255);
-    if (lower.Contains("neutral"))  return new Color32(180, 180, 180, 255);
 
-    return Color.white;
-}
-        
+
+        // ── Bottom-center timer label ─────────────────────────────────────────
+
+        private void BuildBottomTimer()
+        {
+            if (HudManager.Instance == null) return;
+
+            _timerRoot = new GameObject("DraftBottomTimer");
+            _timerRoot.transform.SetParent(HudManager.Instance.transform, false);
+
+            // Position at bottom center of the screen, just where the ping tracker sits.
+            // Typical HUD space: y ≈ -2.6 puts it near the bottom edge in world units.
+            _timerRoot.transform.localPosition = new Vector3(0f, -2.6f, -25f);
+
+            _timerText = _timerRoot.AddComponent(
+                Il2CppInterop.Runtime.Il2CppType.Of<TextMeshPro>()).Cast<TextMeshPro>();
+
+            _timerText.font         = HudManager.Instance.TaskPanel.taskText.font;
+            _timerText.fontMaterial = HudManager.Instance.TaskPanel.taskText.fontMaterial;
+            _timerText.fontSize     = 2.5f;
+            _timerText.alignment    = TextAlignmentOptions.Center;
+            _timerText.enableWordWrapping = false;
+            _timerText.text         = string.Empty;
+
+            // Make sure it renders on top of most HUD elements
+            var r = _timerRoot.GetComponent<Renderer>();
+            if (r != null) { r.sortingLayerName = "UI"; r.sortingOrder = 55; }
+        }
+
+        private void DestroyBottomTimer()
+        {
+            if (_timerRoot != null)
+            {
+                try { Destroy(_timerRoot); } catch { }
+                _timerRoot = null;
+                _timerText = null;
+            }
+        }
+
+        // ── Show / Hide ───────────────────────────────────────────────────────
 
         public static void Show(ushort[] roleIds)
         {
@@ -79,6 +117,9 @@ namespace DraftModeTOUM
         public static void Hide()
         {
             if (Instance == null) return;
+
+            Instance.DestroyBottomTimer();
+
             if (Instance._screenRoot != null) Destroy(Instance._screenRoot);
 
             if (HudManager.Instance != null)
@@ -90,20 +131,22 @@ namespace DraftModeTOUM
                     if (child != null && child.name.StartsWith("DraftCard_"))
                         Destroy(child.gameObject);
                 }
-
             }
 
             Destroy(Instance.gameObject);
             Instance = null;
         }
 
-        
+        // ── Build screen ──────────────────────────────────────────────────────
 
         private void BuildScreen()
         {
             if (HudManager.Instance == null) return;
             if (HudManager.Instance.FullScreen != null)
                 HudManager.Instance.FullScreen.color = Color.clear;
+
+           
+            BuildBottomTimer();
 
             GameObject prefab = null;
             try
@@ -120,6 +163,7 @@ namespace DraftModeTOUM
             if (prefab == null)
             {
                 DraftModePlugin.Logger.LogError("[DraftScreenController] SelectRoleGame prefab not found.");
+                DestroyBottomTimer();
                 Destroy(gameObject); Instance = null; return;
             }
 
@@ -137,7 +181,7 @@ namespace DraftModeTOUM
             var statusGo    = _screenRoot.transform.Find("Status");
             var rolesHolder = _screenRoot.transform.Find("Roles");
 
-            
+            // "Pick Your Role!" label — stays at the top exactly as before
             if (statusGo != null)
             {
                 _statusText = statusGo.GetComponent<TextMeshPro>();
@@ -152,12 +196,12 @@ namespace DraftModeTOUM
 
             if (holderGo == null)
             {
+                DestroyBottomTimer();
                 Destroy(_screenRoot); Destroy(gameObject); Instance = null; return;
             }
 
             var rolePrefab = holderGo.gameObject;
 
-            
             var idList = new List<ushort>();
             if (_offeredRoleIds != null) idList.AddRange(_offeredRoleIds);
             var cards = DraftUiManager.BuildCards(idList);
@@ -170,17 +214,14 @@ namespace DraftModeTOUM
 
             if (useGrid)
             {
-                
                 var hLayout = rolesHolder?.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
                 if (hLayout != null) hLayout.enabled = false;
 
-                
                 var rt = rolesHolder?.GetComponent<RectTransform>();
                 if (rt != null) rt.sizeDelta = new Vector2(rt.sizeDelta.x, 12f);
             }
             else
             {
-                
                 var layoutGroup = rolesHolder?.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
                 if (layoutGroup != null)
                     layoutGroup.spacing = spacing;
@@ -205,7 +246,7 @@ namespace DraftModeTOUM
             Coroutines.Start(CoAnimateCards(rolesHolder, cardScale, useGrid, totalCards));
         }
 
-        
+        // ── Card creation (unchanged) ─────────────────────────────────────────
 
         private static PassiveButton CreateCard(
             GameObject rolePrefab,
@@ -228,14 +269,11 @@ namespace DraftModeTOUM
             var passiveButton = actualCard.GetComponent<PassiveButton>();
             var rollover      = actualCard.GetComponent<ButtonRolloverHandler>();
 
-            
-            
             int   tiltIndex = useGrid ? (cardIndex % Mathf.CeilToInt(totalCards / 2f)) : cardIndex;
             float tiltScale = Mathf.Lerp(1f, 0.25f, Mathf.InverseLerp(3f, 9f, totalCards));
             float randZ     = (-10f + tiltIndex * 5f) * tiltScale
                               + UnityEngine.Random.Range(-1.5f, 1.5f) * tiltScale;
 
-            
             passiveButton.OnMouseOver.AddListener((UnityAction)(() =>
             {
                 var pos = newRoleObj.transform.localPosition;
@@ -251,21 +289,17 @@ namespace DraftModeTOUM
 
             if (useGrid)
             {
-                
                 int cols    = Mathf.CeilToInt(totalCards / 2f);
                 int row     = cardIndex / cols;
                 int col     = cardIndex % cols;
 
-                
                 float cardW = 2.5f * cardScale;
                 float cardH = 3.7f * cardScale;
                 float xGap  = cardW + spacing;
                 float yGap  = cardH + spacing * 0.5f;
 
-                
                 float totalW = cols * xGap - spacing;
                 float startX = -totalW / 2f + cardW / 2f;
-                
                 float startY = yGap / 2f;
 
                 float xPos = startX + col * xGap;
@@ -275,7 +309,6 @@ namespace DraftModeTOUM
             }
             else
             {
-                
                 newRoleObj.transform.localPosition = new Vector3(
                     newRoleObj.transform.localPosition.x, 0f, cardIndex);
             }
@@ -290,8 +323,6 @@ namespace DraftModeTOUM
             if (cardBgRenderer != null) cardBgRenderer.color = color;
             roleImage.color = Color.white;
 
-            
-            
             teamText.fontSizeMax = Mathf.Lerp(4f, 2f, Mathf.InverseLerp(3f, 9f, totalCards));
             teamText.enableAutoSizing = true;
 
@@ -304,14 +335,13 @@ namespace DraftModeTOUM
             return passiveButton;
         }
 
-        
+        // ── Card animation (unchanged) ────────────────────────────────────────
 
         private static IEnumerator CoAnimateCards(Transform rolesHolder, float cardScale, bool useGrid, int totalCards)
         {
             if (rolesHolder == null) yield break;
             int cols = Mathf.CeilToInt(totalCards / 2f);
-            
-            
+
             for (int i = 0; i < rolesHolder.childCount; i++)
             {
                 if (rolesHolder == null) yield break;
@@ -327,7 +357,7 @@ namespace DraftModeTOUM
                 catch (Exception bex) { DraftModePlugin.Logger.LogWarning($"[DraftScreen] BetterBloop failed: {bex.Message}"); }
                 yield return new WaitForSeconds(0.08f);
             }
-            
+
             if (Instance != null) Instance._cardsReady = true;
             DraftNetworkHelper.NotifyPickerReady();
         }
@@ -335,7 +365,7 @@ namespace DraftModeTOUM
         private static IEnumerator CoAnimateCardIn(Transform card, int currentCard)
         {
             if (card == null) yield break;
-            
+
             float randY = (currentCard * currentCard * 0.5f - currentCard) * 0.05f
                           + UnityEngine.Random.Range(-0.08f, 0f);
             float randZ = -10f + currentCard * 5f + UnityEngine.Random.Range(-1.5f, 0f);
@@ -366,7 +396,7 @@ namespace DraftModeTOUM
             card.localRotation = Quaternion.Euler(0f, 0f, -randZ);
         }
 
-        
+        // ── Update ────────────────────────────────────────────────────────────
 
         private float _localTimeLeft = -1f;
         private bool  _cardsReady    = false;
@@ -376,27 +406,39 @@ namespace DraftModeTOUM
             if (HudManager.Instance?.FullScreen != null)
                 HudManager.Instance.FullScreen.color = Color.clear;
 
-            if (_hasPicked || _statusText == null || !DraftManager.IsDraftActive || !_cardsReady) return;
+            // Keep the top label clean — only the static "Pick Your Role!" text, no timer
+            if (_statusText != null)
+                _statusText.text = "<color=#FFFFFF><b>Pick Your Role!</b></color>";
 
-            int secs;
-            if (AmongUsClient.Instance.AmHost)
+            // Bottom-center timer label
+            if (_timerText != null)
             {
-                secs = Mathf.Max(0, Mathf.CeilToInt(DraftManager.TurnTimeLeft));
-            }
-            else
-            {
-                if (_localTimeLeft < -0.5f) _localTimeLeft = DraftManager.TurnDuration;
-                if (_localTimeLeft > 0f) _localTimeLeft -= Time.deltaTime;
-                secs = Mathf.Max(0, Mathf.CeilToInt(_localTimeLeft));
-            }
+                if (_hasPicked || !DraftManager.IsDraftActive || !_cardsReady)
+                {
+                    _timerText.text = string.Empty;
+                }
+                else
+                {
+                    int secs;
+                    if (AmongUsClient.Instance.AmHost)
+                    {
+                        secs = Mathf.Max(0, Mathf.CeilToInt(DraftManager.TurnTimeLeft));
+                    }
+                    else
+                    {
+                        if (_localTimeLeft < -0.5f) _localTimeLeft = DraftManager.TurnDuration;
+                        if (_localTimeLeft > 0f) _localTimeLeft -= Time.deltaTime;
+                        secs = Mathf.Max(0, Mathf.CeilToInt(_localTimeLeft));
+                    }
 
-            _statusText.text =
-                $"<color=#FFFFFF><b>Pick Your Role!</b></color>   " +
-                $"<color={(secs <= 5 ? "#FF5555" : "#FFD700")}>" +
-                $"{secs} Second{(secs != 1 ? "s" : "")} Remain</color>";
+                    string color = secs <= 5 ? "#FF5555" : "#FFD700";
+                    _timerText.text =
+                        $"<color={color}><b>{secs} Second{(secs != 1 ? "s" : "")} Remaining</b></color>";
+                }
+            }
         }
 
-        
+        // ── Card click ────────────────────────────────────────────────────────
 
         private void OnCardClicked(int index)
         {
@@ -409,4 +451,3 @@ namespace DraftModeTOUM
         private void DestroySelf() => Hide();
     }
 }
-
