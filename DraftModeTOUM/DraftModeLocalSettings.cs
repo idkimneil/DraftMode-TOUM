@@ -34,10 +34,6 @@ public sealed class DraftModeLocalSettings(ConfigFile config) : LocalSettingsTab
         config.Bind("Audio", "Custom Chime", false);
 
     [LocalToggleSetting]
-    public ConfigEntry<bool> HideHudDuringDraft { get; private set; } =
-        config.Bind("UI", "Hide HUD During Draft", false);
-
-    [LocalToggleSetting]
     public ConfigEntry<bool> ShowDraftSidebar { get; private set; } =
         config.Bind("UI", "Show Draft Sidebar", true);
 }

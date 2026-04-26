@@ -6,15 +6,28 @@
     <Nullable>disable</Nullable>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>1.0.8</Version>
+    <Version>1.0.9</Version>
   </PropertyGroup>
-
-  <!-- Drop all required DLLs into the libs\ folder next to the .csproj -->
 
   <!-- Auto-copy to game after build if $(AmongUs) env var is set -->
   <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(AmongUs)' != ''">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AmongUs)/BepInEx/plugins/" UseSymboliclinksIfPossible="true" />
   </Target>
+
+  <!-- ── TOU-Mira via NuGet ──────────────────────────────────────────────────
+       Replaces the old manual libs\MiraAPI.dll + libs\TownOfUsMira.dll entries.
+       ExcludeAssets=runtime means the DLL is compile-time only and won't be
+       copied into our build output (BepInEx plugins never bundle their deps).
+
+       Version *-* resolves to the latest stable OR prerelease build.
+       Pin to a specific version (e.g. "1.6.0" or "1.6.1-CI.42") once you know
+       which build you want to target.
+  -->
+  <ItemGroup>
+    <PackageReference Include="TownOfUsMira" Version="*-*">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
 
   <ItemGroup>
     <!-- ── BepInEx Core ───────────────────────────────────────────────── -->
@@ -124,16 +137,6 @@
     <!-- ── Reactor ───────────────────────────────────────────────────── -->
     <Reference Include="Reactor">
       <HintPath>libs\Reactor.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-
-    <!-- ── MiraAPI + TownOfUs ────────────────────────────────────────── -->
-    <Reference Include="MiraAPI">
-      <HintPath>libs\MiraAPI.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="TownOfUsMira">
-      <HintPath>libs\TownOfUsMira.dll</HintPath>
       <Private>False</Private>
     </Reference>
 
@@ -355,7 +358,7 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.ClusterInputModule">
-      <HintPath>libs\UnityEngine.ClusterInputModule.dll</HintPath>
+      <HintPath>libs\UnityEngine.ClusterRendererModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.ClusterRendererModule">
@@ -682,20 +685,13 @@
       <HintPath>libs\__Generated.dll</HintPath>
       <Private>False</Private>
     </Reference>
-<Reference Include="UnityEngine.UnityWebRequestModule">
-  <HintPath>libs\UnityEngine.UnityWebRequestModule.dll</HintPath>
-  <Private>False</Private>
-</Reference>
-<Reference Include="UnityEngine.UnityWebRequestAudioModule">
-  <HintPath>libs\UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
-  <Private>False</Private>
-</Reference>
   </ItemGroup>
 
-  <!-- New files added in 1.1.0 -->
+  <!-- Embedded resources -->
   <ItemGroup>
-        <EmbeddedResource Include="modinfo.json"/>
-        <EmbeddedResource Include="Resources/DraftLogo.png"/>
-        <EmbeddedResource Include="Resources/QuitButton.png" />
-    </ItemGroup>
+    <EmbeddedResource Include="modinfo.json"/>
+    <EmbeddedResource Include="Resources/DraftLogo.png"/>
+    <EmbeddedResource Include="Resources/QuitButton.png" />
+  </ItemGroup>
+
 </Project>

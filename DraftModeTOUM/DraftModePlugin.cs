@@ -11,8 +11,11 @@ using DraftModeTOUM.Patches;
 using MiraAPI.PluginLoading;
 using Reactor.Networking;
 using Reactor.Networking.Attributes;
+using Reactor.Utilities;
 using UnityEngine;
 
+// Reactor credits API
+using Reactor;
 
 namespace DraftModeTOUM
 {
@@ -40,6 +43,7 @@ namespace DraftModeTOUM
             _harmony.PatchAll();
 
             Logger.LogInfo("DraftModeTOUM loaded successfully!");
+            ReactorCredits.Register<DraftModePlugin>(ReactorCredits.AlwaysShow);
         }
 
         public override bool Unload()
@@ -52,7 +56,7 @@ namespace DraftModeTOUM
         {
             public const string PLUGIN_GUID = "com.draftmodetoum.mod";
             public const string PLUGIN_NAME = "DraftModeTOUM";
-            public const string PLUGIN_VERSION = "1.0.8";
+            public const string PLUGIN_VERSION = "1.0.9";
         }
 
         [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnDisconnected))]
