@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="screenshots/banner (2).png" alt="DraftModeTOUM" width="700"/>
+  <img src="screenshots/logo-banner.png" alt="DraftModeTOUM" width="500"/><img src="DraftModeTOUM/Resources/DraftLogo.png" height="700"></img>
 </p>
 
 A [BepInEx](https://github.com/BepInEx/BepInEx) mod for **Among Us** running [Town of Us: Mira (TOU:M)](https://github.com/AU-Avengers/TOU-Mira) that adds a **Draft Mode** — players take turns picking their roles before the game begins instead of having them assigned randomly.
 
 <div align="center">
   <a href="https://github.com/idkimneil/DraftMode-TOUM/releases/"> <img alt="Latest Release" src="https://badgen.net/github/release/idkimneil/DraftMode-TOUM?icon=github"></a>
-  <a href="https://github.com/idkimneil/DraftMode-TOUM/releases"> <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/idkimneil/DraftMode-TOUM/total"></a>
+  <a href="https://github.com/idkimneil/DraftMode-TOUM/releases"> <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/idkimneil/DraftMode-TOUm/total"></a>
  
 </div>
 <br/>
@@ -80,7 +80,7 @@ Key settings:
 
 After every player has picked, a **Draft Recap** is shown on screen for all players, listing each pick slot and the role they chose. Role names are color-coded by their in-game color for easy readability.
 
-![Draft Recap](screenshots/recap.png)
+![Draft Recap](screenshots/draft-recap.png)
 
 The recap can be toggled off so roles stay secret — only the player who picked knows what they got. To toggle it, the host can use the **Show Draft Recap** option in settings
 
@@ -92,7 +92,8 @@ Each player can toggle whether they hear audio for when the draft starts, and mo
 
 | Setting       | Description |
 |---------------|-------------|
-| Audio Setting | • No Sound – Disables all audio.<br>• Sound on Draft Start – Plays a sound when the draft phase begins.<br>• Sound on Turn Start – Plays a sound at the start of each turn. |
+| Audio | • No Sound – Disables all audio.<br>• Sound on Draft Start – Plays a sound when the draft phase begins.<br>• Sound on Turn Start – Plays a sound at the start of each turn. |
+| UI | • Show Draft Sidebar – Turns Role List into a Draft Player List <br>• Hide HUD Buttons – Hides all the Top Right UI Buttons During Draft |
 
 ---
 
