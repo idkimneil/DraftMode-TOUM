@@ -2,6 +2,7 @@
 using Reactor.Utilities.Attributes;
 using System.Collections;
 using System.Collections.Generic;
+using HarmonyLib;
 using TMPro;
 using TownOfUs.Assets;
 using TownOfUs.Utilities;
@@ -29,18 +30,21 @@ namespace DraftModeTOUM
 
         private static GameObject? _cachedRolePrefab;
 
-        private ushort?      _pendingRoleId     = null;
-        private ushort?      _shownRoleId       = null;
-        private int          _cachedMySlot      = -1;
-        private int          _cachedPickerSlot  = -1;
-        private int          _cachedPickerCount = -1;
-        private OverlayState _currentState      = OverlayState.Hidden;
+        private ushort?      _pendingRoleId      = null;
+        private ushort?      _shownRoleId        = null;
+        private int          _cachedMySlot       = -1;
+        private int          _cachedPickerSlot   = -1;
+        private int          _cachedPickerCount  = -1;
+        private OverlayState _currentState       = OverlayState.Hidden;
+
+        // Track whether we hid the card due to a menu being open so we can restore it
+        private bool _cardHiddenForMenu = false;
 
         private List<GameObject> _hiddenHudChildren = new();
 
         private static readonly Color WaitingBgColor = new Color(0f, 0f, 0f, 1f);
 
-        private static readonly Vector3 CardHudPos = new Vector3(-2.0f, 0.3f, -21f);
+        private static readonly Vector3 CardHudPos = new Vector3(2.0f, 0.3f, -21f);
         private const float CardScale              = 0.55f;
         private const float CardTiltDeg            = -8f;
         private const float TeamNameFontSize       = 3.8f;
@@ -94,9 +98,10 @@ namespace DraftModeTOUM
             _instance._cachedMySlot     = -1;
             _instance._cachedPickerSlot = -1;
             _instance._cachedPickerCount = -1;
+            _cachedRolePrefab           = null;
         }
 
-        
+        // ── Lifecycle ─────────────────────────────────────────────────────────
 
         private void Awake()
         {
@@ -111,7 +116,7 @@ namespace DraftModeTOUM
             if (_instance == this) _instance = null;
         }
 
-        
+        // ── UI construction ───────────────────────────────────────────────────
 
         private void BuildUI()
         {
@@ -131,7 +136,7 @@ namespace DraftModeTOUM
             bgSr.sortingLayerName = "UI";
             bgSr.sortingOrder     = 49;
 
-            var cam   = Camera.main;
+            var cam    = Camera.main;
             float camH = cam != null ? cam.orthographicSize * 2f : 6f;
             float camW = camH * ((float)Screen.width / Screen.height);
             _bgOverlay.transform.localScale = new Vector3(camW, camH, 1f);
@@ -157,7 +162,7 @@ namespace DraftModeTOUM
             _root.SetActive(false);
         }
 
-        
+        // ── Role prefab ───────────────────────────────────────────────────────
 
         private static bool EnsureRolePrefab()
         {
@@ -180,7 +185,7 @@ namespace DraftModeTOUM
             }
         }
 
-        
+        // ── Role card ─────────────────────────────────────────────────────────
 
         private void ShowRoleCard(ushort roleId)
         {
@@ -211,8 +216,8 @@ namespace DraftModeTOUM
             _roleCardNewRoleObj.transform.localScale    = Vector3.one * CardScale;
             _roleCardNewRoleObj.transform.localRotation = Quaternion.Euler(0f, 0f, CardTiltDeg);
 
-            if (roleText  != null) roleText.text  = roleName;
-            if (teamText  != null)
+            if (roleText != null) roleText.text = roleName;
+            if (teamText != null)
             {
                 teamText.text             = teamName;
                 teamText.fontSizeMax      = TeamNameFontSize;
@@ -222,11 +227,10 @@ namespace DraftModeTOUM
             if (roleImage != null) { roleImage.sprite = icon; roleImage.SetSizeLimit(2.8f); roleImage.color = Color.white; }
 
             var cardBg = actualCard.GetComponent<SpriteRenderer>();
-            if (cardBg   != null) cardBg.color   = color;
+            if (cardBg   != null) cardBg.color  = color;
             if (rollover != null) { rollover.OutColor = color; rollover.OverColor = Color.white; }
-            if (roleText != null) roleText.color  = color;
+            if (roleText != null) roleText.color = color;
 
-            
             foreach (var tmp in _roleCardNewRoleObj.GetComponentsInChildren<TMPro.TMP_Text>())
             {
                 var r = tmp.GetComponent<Renderer>();
@@ -238,7 +242,6 @@ namespace DraftModeTOUM
                 sr.sortingOrder     = 1;
             }
 
-            
             var col = actualCard.GetComponent<Collider2D>() as Collider2D
                    ?? actualCard.GetComponent<BoxCollider2D>() as Collider2D;
             if (col == null)
@@ -272,10 +275,11 @@ namespace DraftModeTOUM
             }
 
             _roleCardNewRoleObj.SetActive(true);
+            _cardHiddenForMenu = false;
             Coroutines.Start(CoPopInCard(_roleCardNewRoleObj.transform));
         }
 
-        
+        // ── Wiki ──────────────────────────────────────────────────────────────
 
         private void OpenWiki(ushort roleId)
         {
@@ -288,8 +292,6 @@ namespace DraftModeTOUM
                     return;
                 }
 
-                
-                
                 if (_roleCardNewRoleObj != null)
                     _roleCardNewRoleObj.SetActive(false);
 
@@ -297,33 +299,50 @@ namespace DraftModeTOUM
                 wiki.Begin(null);
                 wiki.OpenFor(wikiTarget);
 
-                
-                
-                
                 Coroutines.Start(CoWaitForWikiDestroyed(wiki));
             }
             catch (System.Exception ex)
             {
                 DraftModePlugin.Logger.LogWarning($"[DraftStatusOverlay] Wiki open failed: {ex.Message}");
-                
                 if (_roleCardNewRoleObj != null)
                     _roleCardNewRoleObj.SetActive(true);
             }
         }
+
         [HideFromIl2Cpp]
         private IEnumerator CoWaitForWikiDestroyed(TownOfUs.Modules.Wiki.IngameWikiMinigame wiki)
         {
-            
-            
             while (wiki != null)
                 yield return null;
-
-            
-            if (_roleCardNewRoleObj != null)
+            if (_roleCardNewRoleObj != null && !IsAnyMenuOpen())
                 _roleCardNewRoleObj.SetActive(true);
         }
 
-        
+        // ── Menu detection ────────────────────────────────────────────────────
+
+        private static bool IsAnyMenuOpen()
+        {
+            try
+            {
+                if (Minigame.Instance != null)                return true;
+                if (PlayerCustomizationMenu.Instance != null) return true;
+                if (GameSettingMenu.Instance != null)         return true;
+
+                var hud = HudManager.Instance;
+                if (hud != null)
+                {
+                    if (hud.GameMenu != null && hud.GameMenu.IsOpen)         return true;
+                    if (hud.Chat != null && hud.Chat.IsOpenOrOpening)        return true;
+                }
+
+                if (FriendsListUI.Instance != null && FriendsListUI.Instance.IsOpen) return true;
+            }
+            catch { }
+
+            return false;
+        }
+
+        // ── Role card helpers ─────────────────────────────────────────────────
 
         private void DestroyRoleCard()
         {
@@ -332,6 +351,7 @@ namespace DraftModeTOUM
                 try { UnityEngine.Object.Destroy(_roleCardNewRoleObj); } catch { }
                 _roleCardNewRoleObj = null;
             }
+            _cardHiddenForMenu = false;
         }
 
         private static IEnumerator CoPopInCard(Transform holder)
@@ -363,12 +383,29 @@ namespace DraftModeTOUM
             return Color.white;
         }
 
-        
+        // ── Update ────────────────────────────────────────────────────────────
 
         private void Update()
         {
             if (_currentState == OverlayState.Hidden) return;
 
+            // ── Role card menu hide/show ───────────────────────────────────────
+            if (_roleCardNewRoleObj != null)
+            {
+                bool menuOpen = IsAnyMenuOpen();
+                if (menuOpen && _roleCardNewRoleObj.activeSelf)
+                {
+                    _roleCardNewRoleObj.SetActive(false);
+                    _cardHiddenForMenu = true;
+                }
+                else if (!menuOpen && _cardHiddenForMenu && !_roleCardNewRoleObj.activeSelf)
+                {
+                    _roleCardNewRoleObj.SetActive(true);
+                    _cardHiddenForMenu = false;
+                }
+            }
+
+            // ── Waiting state updates ─────────────────────────────────────────
             if (_currentState == OverlayState.Waiting)
             {
                 if (_root == null) BuildUI();
@@ -376,8 +413,8 @@ namespace DraftModeTOUM
 
                 if (DraftManager.IsDraftActive)
                 {
-                    int mySlot     = DraftManager.GetSlotForPlayer(PlayerControl.LocalPlayer.PlayerId);
-                    int pickerSlot = -1;
+                    int mySlot      = DraftManager.GetSlotForPlayer(PlayerControl.LocalPlayer.PlayerId);
+                    int pickerSlot  = -1;
                     int pickerCount = 0;
                     foreach (var s in DraftManager.GetActivePickerStates())
                     {
@@ -388,8 +425,8 @@ namespace DraftModeTOUM
 
                     if (mySlot != _cachedMySlot || pickerSlot != _cachedPickerSlot || pickerCount != _cachedPickerCount)
                     {
-                        _cachedMySlot     = mySlot;
-                        _cachedPickerSlot = pickerSlot;
+                        _cachedMySlot      = mySlot;
+                        _cachedPickerSlot  = pickerSlot;
                         _cachedPickerCount = pickerCount;
                         UpdateContent();
                     }
@@ -408,7 +445,7 @@ namespace DraftModeTOUM
         {
             if (_root == null) return;
 
-            int mySlot     = DraftManager.GetSlotForPlayer(PlayerControl.LocalPlayer.PlayerId);
+            int mySlot      = DraftManager.GetSlotForPlayer(PlayerControl.LocalPlayer.PlayerId);
             int pickerSlot  = -1;
             int pickerCount = 0;
             bool isMyTurn   = false;
@@ -427,7 +464,7 @@ namespace DraftModeTOUM
             if (_nowPickingValue != null)
                 _nowPickingValue.color = isMyTurn ? new Color(0.1f, 1f, 0.4f) : new Color(1f, 0.85f, 0.1f);
             if (_nowPickingLabel != null)
-                _nowPickingLabel.text  = isMyTurn ? "YOUR TURN!" : (pickerCount > 1 ? "NOW PICKING (MULTI):" : "NOW PICKING:");
+                _nowPickingLabel.text = isMyTurn ? "YOUR TURN!" : (pickerCount > 1 ? "NOW PICKING (MULTI):" : "NOW PICKING:");
         }
 
         private void UpdateVisibility()
@@ -458,6 +495,8 @@ namespace DraftModeTOUM
             }
         }
 
+        // ── HUD element hiding ────────────────────────────────────────────────
+
         private void HideHudElements()
         {
             _hiddenHudChildren.RemoveAll(go => go == null);
@@ -487,6 +526,8 @@ namespace DraftModeTOUM
             _hiddenHudChildren.Clear();
         }
 
+        // ── Text factory ──────────────────────────────────────────────────────
+
         private static TextMeshPro MakeText(
             GameObject parent, string name,
             TMP_FontAsset font, Material fontMat,
@@ -512,18 +553,61 @@ namespace DraftModeTOUM
             return tmp;
         }
 
+        // ── White sprite factory ──────────────────────────────────────────────
+
         private static Sprite? _white;
         private static Sprite MakeWhiteSprite()
         {
             if (_white != null) return _white;
             var tex = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+            tex.hideFlags = HideFlags.HideAndDontSave;
             var px  = new Color[16];
             for (int i = 0; i < 16; i++) px[i] = Color.white;
             tex.SetPixels(px);
             tex.Apply();
-            _white = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
+            _white           = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
+            _white.hideFlags = HideFlags.HideAndDontSave;
             return _white;
         }
     }
-}
 
+    // ── PingTracker Harmony patches ───────────────────────────────────────────
+    //
+    // Harmony postfix execution order: HIGHER priority number runs FIRST.
+    //   Priority.First = 800  (us, prefix — skips vanilla Update)
+    //   Priority.Last  = 0    (Reactor and TOU-Mira postfixes append text here)
+    //   int.MinValue          (our postfix — guaranteed to run dead last, wipes text)
+    //
+    // Two separate patch classes are used because Harmony does not support
+    // mixing [HarmonyPrefix] and [HarmonyPostfix] with different priorities
+    // inside the same class reliably across all versions.
+
+    [HarmonyPatch(typeof(PingTracker), nameof(PingTracker.Update))]
+    public static class PingTrackerDraftPrefix
+    {
+        // Runs before everything — skips the vanilla Update so "PING: X ms"
+        // is never written while draft is active.
+        [HarmonyPrefix]
+        [HarmonyPriority(Priority.First)]
+        public static bool Prefix()
+        {
+            return !DraftManager.IsDraftActive; // false = skip original
+        }
+    }
+
+    [HarmonyPatch(typeof(PingTracker), nameof(PingTracker.Update))]
+    public static class PingTrackerDraftPostfix
+    {
+        // int.MinValue is lower than Priority.Last (0), so this postfix runs
+        // after Reactor's and TOU-Mira's Priority.Last postfixes have both
+        // finished appending their mod-list and region text, then wipes it all.
+        [HarmonyPostfix]
+        [HarmonyPriority(int.MinValue)]
+        public static void Postfix(PingTracker __instance)
+        {
+            if (!DraftManager.IsDraftActive) return;
+            if (__instance.text != null)
+                __instance.text.text = string.Empty;
+        }
+    }
+}

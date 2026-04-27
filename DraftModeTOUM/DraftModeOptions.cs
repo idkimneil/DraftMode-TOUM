@@ -28,9 +28,23 @@ public sealed class DraftModeOptions : AbstractOptionGroup
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
     };
 
-    public ModdedToggleOption UseRoleChances { get; set; } = new("Use Role Chances For Weighting", true)
+    /// <summary>
+    /// When enabled, the draft pool is built from the active TOU Role List
+    /// (slots 1-15 scaled to player count) instead of the role chance/count
+    /// options.  Slots beyond 15 fall back to a random non-impostor role.
+    /// When disabled the original UseRoleChances weighting is used instead.
+    /// </summary>
+    public ModdedToggleOption UseRoleListForPool { get; set; } = new("Use Role List For Pool", false)
     {
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
+    };
+
+    public ModdedToggleOption UseRoleChances { get; set; } = new("Use Role Chances For Weighting", true)
+    {
+        // Only visible when NOT using the role list, since the role list
+        // already carries its own chance weighting via GetChancePerGame.
+        Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
+                     && !OptionGroupSingleton<DraftModeOptions>.Instance.UseRoleListForPool
     };
 
     public ModdedToggleOption ShowRandomOption { get; set; } = new("Show Random Option", true)
@@ -55,16 +69,21 @@ public sealed class DraftModeOptions : AbstractOptionGroup
 
     public ModdedNumberOption MaxImpostors { get; set; } = new("Max Impostors", 2f, 1f, 5f, 1, MiraNumberSuffixes.None, "0")
     {
+        // Impostor cap is still respected even in role list mode — it acts as
+        // a safety ceiling on top of what the role list specifies.
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
+        && !OptionGroupSingleton<DraftModeOptions>.Instance.UseRoleListForPool
     };
 
     public ModdedNumberOption MaxNeutralKillings { get; set; } = new("Max Neutral Killings", 2f, 1f, 10f, 1f, MiraNumberSuffixes.None, "0")
     {
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
+        && !OptionGroupSingleton<DraftModeOptions>.Instance.UseRoleListForPool
     };
 
     public ModdedNumberOption MaxNeutralPassives { get; set; } = new("Max Neutral Other", 3f, 1f, 10f, 1f, MiraNumberSuffixes.None, "0")
     {
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
+        && !OptionGroupSingleton<DraftModeOptions>.Instance.UseRoleListForPool
     };
 }
