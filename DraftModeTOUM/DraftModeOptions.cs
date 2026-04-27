@@ -67,7 +67,7 @@ public sealed class DraftModeOptions : AbstractOptionGroup
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
     };
 
-    public ModdedNumberOption MaxImpostors { get; set; } = new("Max Impostors", 2f, 1f, 5f, 1f, MiraNumberSuffixes.None, "0")
+    public ModdedNumberOption MaxImpostors { get; set; } = new("Max Impostors", 2f, 1f, 5f, 1, MiraNumberSuffixes.None, "0")
     {
         // Impostor cap is still respected even in role list mode — it acts as
         // a safety ceiling on top of what the role list specifies.
