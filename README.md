@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshots/logo-banner.png" alt="DraftModeTOUM" width="500"/><img src="DraftModeTOUM/Resources/DraftLogo.png" height="400"></img>
+  <img src="screenshots/logo-banner.png" alt="DraftModeTOUM" width="500"/><img src="DraftModeTOUM/Resources/DraftLogo.png" width="400"></img>
 </p>
 
 A [BepInEx](https://github.com/BepInEx/BepInEx) mod for **Among Us** running [Town of Us: Mira (TOU:M)](https://github.com/AU-Avengers/TOU-Mira) that adds a **Draft Mode** — players take turns picking their roles before the game begins instead of having them assigned randomly.
