@@ -11,14 +11,6 @@ namespace DraftModeTOUM.Managers
     public static class DraftSidebarManager
     {
         private static bool _active = false;
-
-        private static readonly string ColWaiting      = "#ffffffff";
-        private static readonly string ColPicking      = "#ffffffff";
-        private static readonly string ColCrewmate     = "#00FFFF";
-        private static readonly string ColImpostor     = "#FF4444";
-        private static readonly string ColNeutral      = "#7e7e7eff";
-        private static readonly string ColDisconnected = "#ffffffff";
-        private static readonly string ColHeader       = "#e7a6ffff";
         private static readonly string ColPlayerName   = "#ffdd00ff";
         private static readonly string ColLocalPlayer  = "#8bd5f9ff";
 
@@ -77,12 +69,12 @@ namespace DraftModeTOUM.Managers
         private static string BuildText()
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"<color={ColHeader}><b>── Draft Order ──</b></color>");
+            sb.AppendLine($"<color=#e7a6ffff><b>── Draft Order ──</b></color>");
             sb.AppendLine();
 
             if (!DraftManager.IsDraftActive)
             {
-                sb.Append($"<color={ColWaiting}>Waiting...</color>");
+                sb.Append($"<color=#ffffffff>Waiting...</color>");
                 return sb.ToString();
             }
 
@@ -103,10 +95,10 @@ namespace DraftModeTOUM.Managers
         private static string BuildStatusLine(PlayerDraftState state)
         {
             if (state.IsDisconnected)
-                return $"<color={ColDisconnected}>DISCONNECTED</color>";
+                return $"<color=#ffffffff>DISCONNECTED</color>";
 
             if (state.IsPickingNow && !state.HasPicked)
-                return $"<color={ColPicking}>is picking...</color>";
+                return $"<color=#ffffffff>is picking...</color>";
 
             if (state.HasPicked && state.ChosenRoleId.HasValue)
             {
@@ -114,19 +106,19 @@ namespace DraftModeTOUM.Managers
                 switch (faction)
                 {
                     case RoleFaction.Impostor:
-                        return $"has picked <color={ColImpostor}><b>IMPOSTOR</b></color>";
+                        return $"has picked <color=#FF4444><b>IMPOSTOR</b></color>";
                     case RoleFaction.NeutralKilling:
                     case RoleFaction.Neutral:
-                        return $"has picked <color={ColNeutral}>NEUTRAL</color>";
+                        return $"has picked <color=#7e7e7eff>NEUTRAL</color>";
                     default:
-                        return $"has picked <color={ColCrewmate}>CREWMATE</color>";
+                        return $"has picked <color=#00FFFF>CREWMATE</color>";
                 }
             }
 
             if (state.HasPicked)
-                return $"has picked <color={ColCrewmate}>CREWMATE</color>";
+                return $"has picked <color=#00FFFF>CREWMATE</color>";
 
-            return $"<color={ColWaiting}>is waiting for turn</color>";
+            return $"<color=#ffffffff>is waiting for turn</color>";
         }
 
         private static RoleFaction GetFactionForRole(ushort roleId)

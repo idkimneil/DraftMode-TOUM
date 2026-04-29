@@ -1,6 +1,5 @@
 <p align="center">
-  <img src="screenshots/logo-banner.png" alt="DraftModeTOUM" width="500"/><img src="DraftModeTOUM/Resources/DraftLogo.png" height="300"></img>
-</p>
+  <img src="screenshots/banner.png" alt="DraftModeTOUM" width="1000"/>
 
 A [BepInEx](https://github.com/BepInEx/BepInEx) mod for **Among Us** running [Town of Us: Mira (TOU:M)](https://github.com/AU-Avengers/TOU-Mira) that adds a **Draft Mode** — players take turns picking their roles before the game begins instead of having them assigned randomly.
 
@@ -19,12 +18,13 @@ A [BepInEx](https://github.com/BepInEx/BepInEx) mod for **Among Us** running [To
 - [BepInEx IL2CPP](https://github.com/BepInEx/BepInEx)
 - [Reactor](https://github.com/NuclearPowered/Reactor)
 - [Town of Us: Mira](https://github.com/AU-Avengers/TOU-Mira)
+- [MiraAPI](https://github.com/All-Of-Us-Mods/MiraAPI)
 
 ---
 
 ## Installation
 
-1. Make sure BepInEx, Reactor, and TOU:M are already installed and working.
+1. Make sure BepInEx, Reactor, MiraAPI, and ToU:M are already installed and working.
 2. Download the latest `DraftModeTOUM.dll` from [Releases](../../releases).
 3. Drop it into your `BepInEx/plugins/` folder.
 4. Launch Among Us — the mod will load automatically.
@@ -40,7 +40,7 @@ Only the **Host** can start a draft. Once everyone is in the lobby, the host can
 This kicks off the draft sequence:
 
 1. Each player is assigned a random **slot number** (their turn order).
-2. The role pool is built from the host's current TOUM role settings.
+2. The role pool is built from the host's current TOUM role settings. They can either choose to populate the Draft based off their Role List or manually adjust the amount of Neutrals/Impostors spawn
 3. Players pick in slot order. The host can allow **1 or 2** players to pick at the same time via the Concurrent Picks setting.
 
 ---
@@ -60,6 +60,10 @@ Roles are presented as large clickable cards spread across the screen. Each card
 
 ![Card Style UI](screenshots/cards.png)
 
+You can choose what shows up in the top left of your screen. Whether its the Role List or a Draft Sidebar.
+![TopLeft](screenshots/sidebar.png)
+
+
 ---
 
 ## Draft Settings
@@ -68,13 +72,6 @@ The host can configure Draft Mode from the **Mira settings menu** in the lobby. 
 
 ![Draft Mode Settings](screenshots/Settings.png)
 
-Key settings:
-- Offered Roles Per Turn
-- Concurrent Picks Per Turn (1 or 2)
-- Turn Duration
-- Auto-start After Draft
-- Show Draft Recap
----
 
 ## Draft Recap
 
@@ -93,13 +90,13 @@ Each player can toggle whether they hear audio for when the draft starts, and mo
 | Setting       | Description |
 |---------------|-------------|
 | Audio | • No Sound – Disables all audio.<br>• Sound on Draft Start – Plays a sound when the draft phase begins.<br>• Sound on Turn Start – Plays a sound at the start of each turn. |
-| UI | • Show Draft Sidebar – Turns Role List into a Draft Player List <br>• Hide HUD Buttons – Hides all the Top Right UI Buttons During Draft |
+| UI | • Show Draft Sidebar – Turns Role List into a Draft Player List |
 
 ---
 
 ## Role Pool
 
-The roles available to be drafted are controlled by the host's **TOUM Role Settings**. Only roles with a non-zero count and non-zero chance will appear in the pool. The following roles are permanently banned from the draft regardless of settings:
+The roles available to be drafted are controlled by the host's **TOUM Role Settings**. Only roles with a non-zero count and non-zero chance will appear in the pool. Host can choose whether to populate the Draft based off their Role List or the Faction Caps. The following roles are permanently banned from the draft regardless of settings:
 
 - Haunter
 - Spectre
