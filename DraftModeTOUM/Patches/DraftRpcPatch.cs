@@ -255,9 +255,10 @@ namespace DraftModeTOUM.Patches
 
     public static class DraftNetworkHelper
     {
-        public static void SendPickToHost(int index)
+        public static void SendPickToHost(int index, bool closePicker = true)
         {
-            DraftUiManager.CloseAll();
+            if (closePicker)
+                DraftUiManager.CloseAll();
             if (AmongUsClient.Instance.AmHost)
             {
                 DraftManager.SubmitPick(PlayerControl.LocalPlayer.PlayerId, index);

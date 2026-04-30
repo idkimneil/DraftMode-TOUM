@@ -1157,6 +1157,9 @@ namespace DraftModeTOUM.Managers
 
             if (!_endSequenceRunning) yield break;
 
+            if (AutoStartAfterDraft)
+                yield return DraftStatusOverlay.CoPlayDraftOutroHandoff();
+
             try { DraftRecapOverlay.Hide(); } catch { }
 
             if (!AutoStartAfterDraft)
@@ -1180,7 +1183,8 @@ namespace DraftModeTOUM.Managers
                 SkipCountdown = false;
             }
 
-            yield return new WaitForSeconds(0.6f);
+            yield return DraftStatusOverlay.CoReleaseDraftOutroLaunchBridge();
+            yield return new WaitForSeconds(0.35f);
             _endSequenceRunning = false;
             try { DraftStatusOverlay.SetState(OverlayState.Hidden); } catch { }
         }
