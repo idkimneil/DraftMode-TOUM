@@ -692,6 +692,7 @@
     <EmbeddedResource Include="modinfo.json"/>
     <EmbeddedResource Include="Resources/DraftLogo.png"/>
     <EmbeddedResource Include="Resources/QuitButton.png" />
+    <EmbeddedResource Include="Resources/DraftBanner.png"/>
   </ItemGroup>
 
 </Project>
