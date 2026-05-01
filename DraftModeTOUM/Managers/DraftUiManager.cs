@@ -45,8 +45,9 @@ namespace DraftModeTOUM.Managers
                 string team        = GetTeamLabel(role)       ?? "Unknown";
                 Sprite icon        = GetRoleIcon(role);
                 Color  color       = GetRoleColor(role);
+                string description = GetRoleDescription(role);
 
-                cards.Add(new DraftRoleCard(displayName, team, icon, color, i));
+                cards.Add(new DraftRoleCard(displayName, team, icon, color, i, id, description));
             }
 
             if (DraftManager.ShowRandomOption)
@@ -54,7 +55,9 @@ namespace DraftModeTOUM.Managers
                     "Random", "Random",
                     TouRoleIcons.RandomAny.LoadAsset(),
                     Color.white,
-                    roleIds.Count));
+                    roleIds.Count,
+                    null,
+                    "Locks in a random eligible role from the draft offer."));
 
             return cards;
         }
@@ -93,6 +96,31 @@ namespace DraftModeTOUM.Managers
             if (role is ICustomRole cr) return cr.RoleColor;
             if (role != null)           return role.TeamColor;
             return Color.white;
+        }
+
+        public static string GetRoleDescription(RoleBehaviour? role)
+        {
+            string? text = null;
+            try { text = role?.Blurb; } catch { }
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                try { text = role?.BlurbLong; } catch { }
+            }
+
+            return CleanDescription(text);
+        }
+
+        private static string CleanDescription(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return "No role preview text available; use the card name and team to choose.";
+
+            string cleaned = text.Replace("\r", " ").Replace("\n", " ").Trim();
+            while (cleaned.Contains("  ", StringComparison.Ordinal))
+                cleaned = cleaned.Replace("  ", " ");
+
+            const int max = 150;
+            return cleaned.Length <= max ? cleaned : cleaned.Substring(0, max - 3).TrimEnd() + "...";
         }
 
         public static string Normalize(string s) =>

@@ -11,6 +11,12 @@ namespace DraftModeTOUM.Managers
     public static class DraftSidebarManager
     {
         private static bool _active = false;
+
+        private static readonly string ColWaiting      = "#ffffffff";
+        private static readonly string ColPicking      = "#ffffffff";
+        private static readonly string ColLocked       = "#88FF88";
+        private static readonly string ColDisconnected = "#ffffffff";
+        private static readonly string ColHeader       = "#e7a6ffff";
         private static readonly string ColPlayerName   = "#ffdd00ff";
         private static readonly string ColLocalPlayer  = "#8bd5f9ff";
 
@@ -69,12 +75,12 @@ namespace DraftModeTOUM.Managers
         private static string BuildText()
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"<color=#e7a6ffff><b>── Draft Order ──</b></color>");
+            sb.AppendLine($"<color={ColHeader}><b>── Draft Order ──</b></color>");
             sb.AppendLine();
 
             if (!DraftManager.IsDraftActive)
             {
-                sb.Append($"<color=#ffffffff>Waiting...</color>");
+                sb.Append($"<color={ColWaiting}>Waiting...</color>");
                 return sb.ToString();
             }
 
@@ -95,41 +101,38 @@ namespace DraftModeTOUM.Managers
         private static string BuildStatusLine(PlayerDraftState state)
         {
             if (state.IsDisconnected)
-                return $"<color=#ffffffff>DISCONNECTED</color>";
+                return $"<color={ColDisconnected}>DISCONNECTED</color>";
 
             if (state.IsPickingNow && !state.HasPicked)
-                return $"<color=#ffffffff>is picking...</color>";
-
-            if (state.HasPicked && state.ChosenRoleId.HasValue)
-            {
-                var faction = GetFactionForRole(state.ChosenRoleId.Value);
-                switch (faction)
-                {
-                    case RoleFaction.Impostor:
-                        return $"has picked <color=#FF4444><b>IMPOSTOR</b></color>";
-                    case RoleFaction.NeutralKilling:
-                    case RoleFaction.Neutral:
-                        return $"has picked <color=#7e7e7eff>NEUTRAL</color>";
-                    default:
-                        return $"has picked <color=#00FFFF>CREWMATE</color>";
-                }
-            }
+                return $"<color={ColPicking}>is picking...</color>";
 
             if (state.HasPicked)
-                return $"has picked <color=#00FFFF>CREWMATE</color>";
+                return BuildPickedAllianceLine(state);
 
-            return $"<color=#ffffffff>is waiting for turn</color>";
+            return $"<color={ColWaiting}>is waiting for turn</color>";
         }
 
-        private static RoleFaction GetFactionForRole(ushort roleId)
+        private static string BuildPickedAllianceLine(PlayerDraftState state)
         {
-            try
-            {
-                var role = RoleManager.Instance?.GetRole((AmongUs.GameOptions.RoleTypes)roleId);
-                if (role != null) return RoleCategory.GetFactionFromRole(role);
-            }
-            catch { }
-            return RoleFaction.Crewmate;
+            if (!state.ChosenRoleId.HasValue)
+                return $"has picked <color={ColLocked}><b>LOCKED IN</b></color>";
+
+            var role = DraftUiManager.ResolveRole(state.ChosenRoleId.Value);
+            string alliance = DraftUiManager.GetTeamLabel(role);
+            if (string.IsNullOrWhiteSpace(alliance) || alliance == "Unknown")
+                return $"has picked <color={ColLocked}><b>LOCKED IN</b></color>";
+
+            string color = ColorUtility.ToHtmlStringRGB(GetAllianceColor(alliance));
+            return $"has picked <color=#{color}><b>{alliance}</b></color>";
+        }
+
+        private static Color GetAllianceColor(string alliance)
+        {
+            string lower = alliance?.ToLowerInvariant() ?? string.Empty;
+            if (lower.Contains("impostor") || lower.Contains("imposter")) return RoleColors.ImpostorFallback;
+            if (lower.Contains("neutral")) return RoleColors.NeutralFallback;
+            if (lower.Contains("crew")) return RoleColors.CrewFallback;
+            return Color.white;
         }
     }
 

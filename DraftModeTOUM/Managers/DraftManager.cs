@@ -69,6 +69,7 @@ namespace DraftModeTOUM.Managers
         private static readonly HashSet<byte>   _roundReadyPickers  = new();
         private static bool _suppressAdvance = false;
         private static readonly Dictionary<int, HashSet<RoleFaction>> _roundAllowedFactions = new();
+        private static readonly Dictionary<int, ushort> _pendingHostPickConfirmations = new();
 
         public static readonly Dictionary<byte, RoleTypes> PendingRoleAssignments = new();
         private static readonly HashSet<byte>              _appliedPlayers        = new();
@@ -193,6 +194,44 @@ namespace DraftModeTOUM.Managers
             _roundChosenRoles.Clear();
             _roundReadyPickers.Clear();
             DraftStatusOverlay.SetState(OverlayState.Waiting);
+            ApplyPendingHostPickConfirmations();
+        }
+
+        public static void ApplyPickConfirmedFromHost(int slot, ushort roleId)
+        {
+            var state = GetStateForSlot(slot);
+            if (state == null)
+            {
+                _pendingHostPickConfirmations[slot] = roleId;
+                DraftModePlugin.Logger.LogWarning($"[DraftManager] Buffered PickConfirmed for unknown slot {slot}");
+                return;
+            }
+
+            ApplyPickConfirmedToState(state, roleId);
+        }
+
+        private static void ApplyPendingHostPickConfirmations()
+        {
+            if (_pendingHostPickConfirmations.Count == 0) return;
+            foreach (var kvp in _pendingHostPickConfirmations.ToArray())
+            {
+                var state = GetStateForSlot(kvp.Key);
+                if (state == null) continue;
+                ApplyPickConfirmedToState(state, kvp.Value);
+                _pendingHostPickConfirmations.Remove(kvp.Key);
+            }
+        }
+
+        private static void ApplyPickConfirmedToState(PlayerDraftState state, ushort roleId)
+        {
+            state.ChosenRoleId = roleId;
+            state.HasPicked    = true;
+            state.IsPickingNow = false;
+            DraftStatusOverlay.NotifySlotLocked(state.SlotNumber);
+            DraftUiManager.RefreshTurnList();
+
+            if (state.PlayerId == PlayerControl.LocalPlayer.PlayerId)
+                DraftStatusOverlay.NotifyLocalPlayerPicked(roleId);
         }
 
         public static void StartDraft()
@@ -437,6 +476,7 @@ namespace DraftModeTOUM.Managers
             _roundOfferReserved.Clear();
             _roundChosenRoles.Clear();
             _roundReadyPickers.Clear();
+            _pendingHostPickConfirmations.Clear();
 
             _impostorsDrafted       = 0;
             _neutralKillingsDrafted = 0;
@@ -462,11 +502,10 @@ namespace DraftModeTOUM.Managers
         public static void NotifyPickerReady(byte playerId)
         {
             if (!IsDraftActive || !AmongUsClient.Instance.AmHost) return;
-            var state = GetStateForPlayer(playerId);
-            if (state == null || state.HasPicked) return;
-            if (!_activeSlots.Contains(state.SlotNumber)) return;
+            var state = ResolveReadyPickerState(playerId);
+            if (state == null) return;
 
-            _roundReadyPickers.Add(playerId);
+            _roundReadyPickers.Add(state.PlayerId);
             int needed = 0;
             foreach (var slot in _activeSlots)
             {
@@ -476,6 +515,26 @@ namespace DraftModeTOUM.Managers
 
             if (needed > 0 && _roundReadyPickers.Count >= needed)
                 TurnTimerRunning = true;
+        }
+
+        private static PlayerDraftState ResolveReadyPickerState(byte playerId)
+        {
+            var state = GetStateForPlayer(playerId);
+            if (state != null && !state.HasPicked && !state.IsDisconnected && _activeSlots.Contains(state.SlotNumber))
+                return state;
+
+            var pending = _activeSlots.Select(GetStateForSlot)
+                .Where(s => s != null && !s.HasPicked && !s.IsDisconnected && !_roundReadyPickers.Contains(s.PlayerId))
+                .ToList();
+
+            if (pending.Count == 1)
+            {
+                DraftModePlugin.Logger.LogWarning(
+                    $"[DraftManager] PickerReady sender {playerId} was not an active pending picker; using slot {pending[0].SlotNumber} single-pending fallback.");
+                return pending[0];
+            }
+
+            return null;
         }
 
         public static void HandlePlayerDisconnected(byte playerId)
@@ -792,7 +851,7 @@ namespace DraftModeTOUM.Managers
         public static bool SubmitPick(byte playerId, int choiceIndex)
         {
             if (!AmongUsClient.Instance.AmHost || !IsDraftActive) return false;
-            var state = GetStateForPlayer(playerId);
+            var state = ResolveSubmittingPickerState(playerId);
             if (state == null || state.HasPicked) return false;
             if (!_activeSlots.Contains(state.SlotNumber)) return false;
 
@@ -802,6 +861,26 @@ namespace DraftModeTOUM.Managers
 
             FinalisePickForState(state, chosenId);
             return true;
+        }
+
+        private static PlayerDraftState ResolveSubmittingPickerState(byte playerId)
+        {
+            var state = GetStateForPlayer(playerId);
+            if (state != null && !state.HasPicked && _activeSlots.Contains(state.SlotNumber))
+                return state;
+
+            var pending = _activeSlots.Select(GetStateForSlot)
+                .Where(s => s != null && !s.HasPicked && !s.IsDisconnected)
+                .ToList();
+
+            if (pending.Count == 1)
+            {
+                DraftModePlugin.Logger.LogWarning(
+                    $"[DraftManager] SubmitPick sender {playerId} was not the active picker; using slot {pending[0].SlotNumber} single-active fallback.");
+                return pending[0];
+            }
+
+            return null;
         }
 
         private static void AutoPickRandom()
@@ -1144,6 +1223,9 @@ namespace DraftModeTOUM.Managers
             return results;
         }
 
+        private const float EndDraftAutoStartDelaySeconds = 0.25f;
+        private const float EndDraftRecapHoldSeconds = 5.0f;
+
         public static void TriggerEndDraftSequence()
         {
             if (_endSequenceRunning) return;
@@ -1153,14 +1235,27 @@ namespace DraftModeTOUM.Managers
 
         private static IEnumerator CoEndDraftSequence()
         {
-            yield return new WaitForSeconds(ShowRecap ? 5.0f : 0.5f);
+            float holdSeconds = ShowRecap ? EndDraftRecapHoldSeconds : (AutoStartAfterDraft ? EndDraftAutoStartDelaySeconds : 0.5f);
+            yield return new WaitForSeconds(holdSeconds);
 
             if (!_endSequenceRunning) yield break;
+
+            if (AutoStartAfterDraft)
+                yield return DraftStatusOverlay.CoPlayDraftOutroHandoff();
 
             try { DraftRecapOverlay.Hide(); } catch { }
 
             if (!AutoStartAfterDraft)
             {
+                _endSequenceRunning = false;
+                try { DraftStatusOverlay.SetState(OverlayState.Hidden); } catch { }
+                yield break;
+            }
+
+            if (!AmongUsClient.Instance.AmHost)
+            {
+                yield return DraftStatusOverlay.CoHoldDraftOutroForRemoteLaunch();
+                yield return new WaitForSeconds(0.1f);
                 _endSequenceRunning = false;
                 try { DraftStatusOverlay.SetState(OverlayState.Hidden); } catch { }
                 yield break;
@@ -1180,7 +1275,8 @@ namespace DraftModeTOUM.Managers
                 SkipCountdown = false;
             }
 
-            yield return new WaitForSeconds(0.6f);
+            yield return DraftStatusOverlay.CoReleaseDraftOutroLaunchBridge();
+            yield return new WaitForSeconds(0.1f);
             _endSequenceRunning = false;
             try { DraftStatusOverlay.SetState(OverlayState.Hidden); } catch { }
         }

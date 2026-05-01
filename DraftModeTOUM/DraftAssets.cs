@@ -11,6 +11,4 @@ public static class DraftAssets
         new LoadableResourceAsset($"{ShortPath}.QuitButton.png", 83.33f);
     public static LoadableAsset<Sprite> DraftIcon { get; } =
         new LoadableResourceAsset($"{ShortPath}.DraftLogo.png");
-    public static LoadableAsset<Sprite> DraftBanner { get; } =
-        new LoadableResourceAsset($"{ShortPath}.DraftBanner.png", 50.00f);
 }

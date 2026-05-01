@@ -46,7 +46,24 @@ namespace DraftModeTOUM.Patches
             {
                 case DraftRpc.SubmitPick:
                     if (AmongUsClient.Instance.AmHost)
-                        DraftManager.SubmitPick(__instance.PlayerId, reader.ReadByte());
+                    {
+                        byte pickerId = __instance.PlayerId;
+                        byte choiceIndex;
+                        if (reader.BytesRemaining >= 2)
+                        {
+                            pickerId = reader.ReadByte();
+                            choiceIndex = reader.ReadByte();
+                        }
+                        else
+                        {
+                            choiceIndex = reader.ReadByte();
+                        }
+                        DraftManager.SubmitPick(pickerId, choiceIndex);
+                    }
+                    else
+                    {
+                        while (reader.BytesRemaining > 0) reader.ReadByte();
+                    }
                     return false;
 
                 case DraftRpc.StartDraft:
@@ -112,15 +129,7 @@ namespace DraftModeTOUM.Patches
                     {
                         int  slot   = reader.ReadInt32();
                         var  roleId = reader.ReadUInt16();
-                        var  state  = DraftManager.GetStateForSlot(slot);
-                        if (state != null)
-                        {
-                            state.ChosenRoleId = roleId;
-                            state.HasPicked    = true;
-                            
-                            if (state.PlayerId == PlayerControl.LocalPlayer.PlayerId)
-                                DraftStatusOverlay.NotifyLocalPlayerPicked(roleId);
-                        }
+                        DraftManager.ApplyPickConfirmedFromHost(slot, roleId);
                     }
                     else
                     {
@@ -130,7 +139,14 @@ namespace DraftModeTOUM.Patches
                 case DraftRpc.PickerReady:
                     
                     if (AmongUsClient.Instance.AmHost)
-                        DraftManager.NotifyPickerReady(__instance.PlayerId);
+                    {
+                        byte pickerId = reader.BytesRemaining > 0 ? reader.ReadByte() : __instance.PlayerId;
+                        DraftManager.NotifyPickerReady(pickerId);
+                    }
+                    else
+                    {
+                        while (reader.BytesRemaining > 0) reader.ReadByte();
+                    }
                     return false;
 
                 case DraftRpc.ForceRole:
@@ -255,9 +271,10 @@ namespace DraftModeTOUM.Patches
 
     public static class DraftNetworkHelper
     {
-        public static void SendPickToHost(int index)
+        public static void SendPickToHost(int index, bool closePicker = true)
         {
-            DraftUiManager.CloseAll();
+            if (closePicker)
+                DraftUiManager.CloseAll();
             if (AmongUsClient.Instance.AmHost)
             {
                 DraftManager.SubmitPick(PlayerControl.LocalPlayer.PlayerId, index);
@@ -269,6 +286,7 @@ namespace DraftModeTOUM.Patches
                     (byte)DraftRpc.SubmitPick,
                     Hazel.SendOption.Reliable,
                     AmongUsClient.Instance.HostId);
+                writer.Write(PlayerControl.LocalPlayer.PlayerId);
                 writer.Write((byte)index);
                 AmongUsClient.Instance.FinishRpcImmediately(writer);
             }
@@ -329,17 +347,6 @@ namespace DraftModeTOUM.Patches
 
         public static void BroadcastPickConfirmed(int slot, ushort roleId)
         {
-            
-            var state = DraftManager.GetStateForSlot(slot);
-            if (state != null)
-            {
-                state.ChosenRoleId = roleId;
-                state.HasPicked    = true;
-                
-                if (state.PlayerId == PlayerControl.LocalPlayer.PlayerId)
-                    DraftStatusOverlay.NotifyLocalPlayerPicked(roleId);
-            }
-
             var writer = AmongUsClient.Instance.StartRpcImmediately(
                 PlayerControl.LocalPlayer.NetId,
                 (byte)DraftRpc.PickConfirmed,
@@ -347,6 +354,15 @@ namespace DraftModeTOUM.Patches
             writer.Write(slot);
             writer.Write(roleId);
             AmongUsClient.Instance.FinishRpcImmediately(writer);
+
+            try
+            {
+                DraftManager.ApplyPickConfirmedFromHost(slot, roleId);
+            }
+            catch (Exception ex)
+            {
+                DraftModePlugin.Logger.LogWarning($"[DraftRpcPatch] Local PickConfirmed UI failed for slot {slot}: {ex.Message}");
+            }
         }
 
         public static void NotifyPickerReady()
@@ -363,6 +379,7 @@ namespace DraftModeTOUM.Patches
                     (byte)DraftRpc.PickerReady,
                     Hazel.SendOption.Reliable,
                     AmongUsClient.Instance.HostId);
+                writer.Write(PlayerControl.LocalPlayer.PlayerId);
                 AmongUsClient.Instance.FinishRpcImmediately(writer);
             }
         }
