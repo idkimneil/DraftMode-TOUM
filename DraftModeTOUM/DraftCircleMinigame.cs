@@ -1,4 +1,5 @@
-﻿using System;
+﻿/* 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using Il2CppInterop.Runtime.Attributes;
@@ -318,4 +319,5 @@ public sealed class DraftCircleMinigame(nint cppPtr) : Minigame(cppPtr)
         return 1f + c3 * Mathf.Pow(t - 1f, 3f) + c1 * Mathf.Pow(t - 1f, 2f);
     }
 }
+*/
 

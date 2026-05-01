@@ -18,17 +18,17 @@ namespace DraftModeTOUM
     [RegisterInIl2Cpp]
     public sealed class DraftStatusOverlay(IntPtr ip) : MonoBehaviour(ip)
     {
-        private static DraftStatusOverlay? _instance;
+        private static DraftStatusOverlay _instance;
 
-        private GameObject?  _root;
-        private GameObject?  _bgOverlay;
-        private TextMeshPro? _yourNumberLabel;
-        private TextMeshPro? _yourNumberValue;
-        private TextMeshPro? _nowPickingLabel;
-        private TextMeshPro? _nowPickingValue;
-        private GameObject?  _roleCardNewRoleObj;
+        private GameObject  _root;
+        private GameObject  _bgOverlay;
+        private TextMeshPro _yourNumberLabel;
+        private TextMeshPro _yourNumberValue;
+        private TextMeshPro _nowPickingLabel;
+        private TextMeshPro _nowPickingValue;
+        private GameObject  _roleCardNewRoleObj;
 
-        private static GameObject? _cachedRolePrefab;
+        private static GameObject _cachedRolePrefab;
 
         private ushort?      _pendingRoleId      = null;
         private ushort?      _shownRoleId        = null;
@@ -37,17 +37,33 @@ namespace DraftModeTOUM
         private int          _cachedPickerCount  = -1;
         private OverlayState _currentState       = OverlayState.Hidden;
 
-        // Track whether we hid the card due to a menu being open so we can restore it
         private bool _cardHiddenForMenu = false;
 
-        private List<GameObject> _hiddenHudChildren = new();
+        private List<GameObject> _hiddenHudChildren = new List<GameObject>();
+
+        // ── Throttle timers ───────────────────────────────────────────────────
+        // IsAnyMenuOpen is relatively expensive (multiple null-checks + property
+        // reads). Run it at ~10 Hz instead of 60 Hz.
+        private float _menuCheckTimer   = 0f;
+        private const float MenuCheckInterval = 0.1f;
+        private bool  _lastMenuOpen     = false;
+
+        // Throttle the Waiting-state slot diff check to ~20 Hz.
+        private float _slotCheckTimer   = 0f;
+        private const float SlotCheckInterval = 0.05f;
+
+        // ── Cached scene-object references ────────────────────────────────────
+        // FindObjectOfType is O(n) over all objects. Cache these once per
+        // HideHudElements call and invalidate on disconnect / main-menu.
+        private static GameStartManager  _cachedGsm;
+        private static LobbyInfoPane     _cachedLobbyPane;
 
         private static readonly Color WaitingBgColor = new Color(0f, 0f, 0f, 1f);
 
         private static readonly Vector3 CardHudPos = new Vector3(2.0f, 0.3f, -21f);
-        private const float CardScale              = 0.55f;
-        private const float CardTiltDeg            = -8f;
-        private const float TeamNameFontSize       = 3.8f;
+        private const float CardScale         = 0.55f;
+        private const float CardTiltDeg       = -8f;
+        private const float TeamNameFontSize  = 3.8f;
 
         public static void EnsureExists()
         {
@@ -60,7 +76,7 @@ namespace DraftModeTOUM
         public static void SetState(OverlayState state)
         {
             EnsureExists();
-            _instance!._currentState = state;
+            _instance._currentState = state;
             _instance.UpdateVisibility();
         }
 
@@ -74,7 +90,7 @@ namespace DraftModeTOUM
         {
             EnsureExists();
             DraftModePlugin.Logger.LogInfo($"[DraftStatusOverlay] NotifyLocalPlayerPicked roleId={roleId}");
-            if (roleId != _instance!._shownRoleId)
+            if (roleId != _instance._shownRoleId)
             {
                 _instance._shownRoleId   = roleId;
                 _instance._pendingRoleId = null;
@@ -99,6 +115,9 @@ namespace DraftModeTOUM
             _instance._cachedPickerSlot = -1;
             _instance._cachedPickerCount = -1;
             _cachedRolePrefab           = null;
+            // Invalidate scene-object caches
+            _cachedGsm                  = null;
+            _cachedLobbyPane            = null;
         }
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -178,7 +197,7 @@ namespace DraftModeTOUM
                 _cachedRolePrefab = holderGo.gameObject;
                 return true;
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 DraftModePlugin.Logger.LogWarning($"[DraftStatusOverlay] Prefab load failed: {ex.Message}");
                 return false;
@@ -258,16 +277,16 @@ namespace DraftModeTOUM
 
                 passiveButton.OnClick.RemoveAllListeners();
                 ushort capturedId = roleId;
-                passiveButton.OnClick.AddListener((System.Action)(() => OpenWiki(capturedId)));
+                passiveButton.OnClick.AddListener((Action)(() => OpenWiki(capturedId)));
 
                 passiveButton.OnMouseOver.RemoveAllListeners();
-                passiveButton.OnMouseOver.AddListener((System.Action)(() =>
+                passiveButton.OnMouseOver.AddListener((Action)(() =>
                 {
                     if (_roleCardNewRoleObj != null)
                         _roleCardNewRoleObj.transform.localScale = Vector3.one * (CardScale * 1.08f);
                 }));
                 passiveButton.OnMouseOut.RemoveAllListeners();
-                passiveButton.OnMouseOut.AddListener((System.Action)(() =>
+                passiveButton.OnMouseOut.AddListener((Action)(() =>
                 {
                     if (_roleCardNewRoleObj != null)
                         _roleCardNewRoleObj.transform.localScale = Vector3.one * CardScale;
@@ -301,7 +320,7 @@ namespace DraftModeTOUM
 
                 Coroutines.Start(CoWaitForWikiDestroyed(wiki));
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 DraftModePlugin.Logger.LogWarning($"[DraftStatusOverlay] Wiki open failed: {ex.Message}");
                 if (_roleCardNewRoleObj != null)
@@ -314,11 +333,11 @@ namespace DraftModeTOUM
         {
             while (wiki != null)
                 yield return null;
-            if (_roleCardNewRoleObj != null && !IsAnyMenuOpen())
+            if (_roleCardNewRoleObj != null && !_lastMenuOpen)
                 _roleCardNewRoleObj.SetActive(true);
         }
 
-        // ── Menu detection ────────────────────────────────────────────────────
+        // ── Menu detection — throttled to ~10 Hz ──────────────────────────────
 
         private static bool IsAnyMenuOpen()
         {
@@ -331,8 +350,8 @@ namespace DraftModeTOUM
                 var hud = HudManager.Instance;
                 if (hud != null)
                 {
-                    if (hud.GameMenu != null && hud.GameMenu.IsOpen)         return true;
-                    if (hud.Chat != null && hud.Chat.IsOpenOrOpening)        return true;
+                    if (hud.GameMenu != null && hud.GameMenu.IsOpen)    return true;
+                    if (hud.Chat != null && hud.Chat.IsOpenOrOpening)   return true;
                 }
 
                 if (FriendsListUI.Instance != null && FriendsListUI.Instance.IsOpen) return true;
@@ -389,23 +408,32 @@ namespace DraftModeTOUM
         {
             if (_currentState == OverlayState.Hidden) return;
 
-            // ── Role card menu hide/show ───────────────────────────────────────
+            float dt = Time.deltaTime;
+
+            // ── Throttled menu check (~10 Hz) ─────────────────────────────────
+            _menuCheckTimer += dt;
+            if (_menuCheckTimer >= MenuCheckInterval)
+            {
+                _menuCheckTimer = 0f;
+                _lastMenuOpen   = IsAnyMenuOpen();
+            }
+
+            // ── Role card menu hide/show (uses cached result) ─────────────────
             if (_roleCardNewRoleObj != null)
             {
-                bool menuOpen = IsAnyMenuOpen();
-                if (menuOpen && _roleCardNewRoleObj.activeSelf)
+                if (_lastMenuOpen && _roleCardNewRoleObj.activeSelf)
                 {
                     _roleCardNewRoleObj.SetActive(false);
                     _cardHiddenForMenu = true;
                 }
-                else if (!menuOpen && _cardHiddenForMenu && !_roleCardNewRoleObj.activeSelf)
+                else if (!_lastMenuOpen && _cardHiddenForMenu && !_roleCardNewRoleObj.activeSelf)
                 {
                     _roleCardNewRoleObj.SetActive(true);
                     _cardHiddenForMenu = false;
                 }
             }
 
-            // ── Waiting state updates ─────────────────────────────────────────
+            // ── Waiting state slot diff check (~20 Hz) ────────────────────────
             if (_currentState == OverlayState.Waiting)
             {
                 if (_root == null) BuildUI();
@@ -413,26 +441,33 @@ namespace DraftModeTOUM
 
                 if (DraftManager.IsDraftActive)
                 {
-                    int mySlot      = DraftManager.GetSlotForPlayer(PlayerControl.LocalPlayer.PlayerId);
-                    int pickerSlot  = -1;
-                    int pickerCount = 0;
-                    foreach (var s in DraftManager.GetActivePickerStates())
+                    _slotCheckTimer += dt;
+                    if (_slotCheckTimer >= SlotCheckInterval)
                     {
-                        if (s == null || !s.IsPickingNow) continue;
-                        pickerCount++;
-                        if (pickerSlot < 0) pickerSlot = s.SlotNumber;
-                    }
+                        _slotCheckTimer = 0f;
 
-                    if (mySlot != _cachedMySlot || pickerSlot != _cachedPickerSlot || pickerCount != _cachedPickerCount)
-                    {
-                        _cachedMySlot      = mySlot;
-                        _cachedPickerSlot  = pickerSlot;
-                        _cachedPickerCount = pickerCount;
-                        UpdateContent();
+                        int mySlot      = DraftManager.GetSlotForPlayer(PlayerControl.LocalPlayer.PlayerId);
+                        int pickerSlot  = -1;
+                        int pickerCount = 0;
+                        foreach (var s in DraftManager.GetActivePickerStates())
+                        {
+                            if (s == null || !s.IsPickingNow) continue;
+                            pickerCount++;
+                            if (pickerSlot < 0) pickerSlot = s.SlotNumber;
+                        }
+
+                        if (mySlot != _cachedMySlot || pickerSlot != _cachedPickerSlot || pickerCount != _cachedPickerCount)
+                        {
+                            _cachedMySlot      = mySlot;
+                            _cachedPickerSlot  = pickerSlot;
+                            _cachedPickerCount = pickerCount;
+                            UpdateContent();
+                        }
                     }
                 }
             }
 
+            // ── Pending role card show ─────────────────────────────────────────
             if (_pendingRoleId.HasValue && _pendingRoleId != _shownRoleId)
             {
                 _shownRoleId   = _pendingRoleId;
@@ -479,6 +514,10 @@ namespace DraftModeTOUM
                 DestroyRoleCard();
                 _pendingRoleId = null;
                 _shownRoleId   = null;
+                // Reset throttle state
+                _menuCheckTimer = 0f;
+                _slotCheckTimer = 0f;
+                _lastMenuOpen   = false;
                 RestoreHudElements();
             }
             else if (_currentState == OverlayState.Waiting)
@@ -495,26 +534,29 @@ namespace DraftModeTOUM
             }
         }
 
-        // ── HUD element hiding ────────────────────────────────────────────────
+        // ── HUD element hiding — uses cached references ───────────────────────
 
         private void HideHudElements()
         {
             _hiddenHudChildren.RemoveAll(go => go == null);
 
-            var gsm = UnityEngine.Object.FindObjectOfType<GameStartManager>();
-            if (gsm != null && gsm.gameObject.activeSelf)
+            // Use cached reference; only call FindObjectOfType if cache is stale
+            if (_cachedGsm == null)
+                _cachedGsm = UnityEngine.Object.FindObjectOfType<GameStartManager>();
+            if (_cachedGsm != null && _cachedGsm.gameObject.activeSelf)
             {
-                gsm.gameObject.SetActive(false);
-                if (!_hiddenHudChildren.Contains(gsm.gameObject))
-                    _hiddenHudChildren.Add(gsm.gameObject);
+                _cachedGsm.gameObject.SetActive(false);
+                if (!_hiddenHudChildren.Contains(_cachedGsm.gameObject))
+                    _hiddenHudChildren.Add(_cachedGsm.gameObject);
             }
 
-            var lobbyInfoPane = UnityEngine.Object.FindObjectOfType<LobbyInfoPane>();
-            if (lobbyInfoPane != null && lobbyInfoPane.gameObject.activeSelf)
+            if (_cachedLobbyPane == null)
+                _cachedLobbyPane = UnityEngine.Object.FindObjectOfType<LobbyInfoPane>();
+            if (_cachedLobbyPane != null && _cachedLobbyPane.gameObject.activeSelf)
             {
-                lobbyInfoPane.gameObject.SetActive(false);
-                if (!_hiddenHudChildren.Contains(lobbyInfoPane.gameObject))
-                    _hiddenHudChildren.Add(lobbyInfoPane.gameObject);
+                _cachedLobbyPane.gameObject.SetActive(false);
+                if (!_hiddenHudChildren.Contains(_cachedLobbyPane.gameObject))
+                    _hiddenHudChildren.Add(_cachedLobbyPane.gameObject);
             }
         }
 
@@ -555,7 +597,7 @@ namespace DraftModeTOUM
 
         // ── White sprite factory ──────────────────────────────────────────────
 
-        private static Sprite? _white;
+        private static Sprite _white;
         private static Sprite MakeWhiteSprite()
         {
             if (_white != null) return _white;
@@ -572,35 +614,21 @@ namespace DraftModeTOUM
     }
 
     // ── PingTracker Harmony patches ───────────────────────────────────────────
-    //
-    // Harmony postfix execution order: HIGHER priority number runs FIRST.
-    //   Priority.First = 800  (us, prefix — skips vanilla Update)
-    //   Priority.Last  = 0    (Reactor and TOU-Mira postfixes append text here)
-    //   int.MinValue          (our postfix — guaranteed to run dead last, wipes text)
-    //
-    // Two separate patch classes are used because Harmony does not support
-    // mixing [HarmonyPrefix] and [HarmonyPostfix] with different priorities
-    // inside the same class reliably across all versions.
 
     [HarmonyPatch(typeof(PingTracker), nameof(PingTracker.Update))]
     public static class PingTrackerDraftPrefix
     {
-        // Runs before everything — skips the vanilla Update so "PING: X ms"
-        // is never written while draft is active.
         [HarmonyPrefix]
         [HarmonyPriority(Priority.First)]
         public static bool Prefix()
         {
-            return !DraftManager.IsDraftActive; // false = skip original
+            return !DraftManager.IsDraftActive;
         }
     }
 
     [HarmonyPatch(typeof(PingTracker), nameof(PingTracker.Update))]
     public static class PingTrackerDraftPostfix
     {
-        // int.MinValue is lower than Priority.Last (0), so this postfix runs
-        // after Reactor's and TOU-Mira's Priority.Last postfixes have both
-        // finished appending their mod-list and region text, then wipes it all.
         [HarmonyPostfix]
         [HarmonyPriority(int.MinValue)]
         public static void Postfix(PingTracker __instance)
