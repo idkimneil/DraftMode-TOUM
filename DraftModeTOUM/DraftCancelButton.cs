@@ -40,7 +40,7 @@ public sealed class DraftCancelButton : TownOfUsButton
 
     public override bool Disabled { get; set; } = true;
 
-    public override bool Enabled(RoleBehaviour? role)
+    public override bool Enabled(RoleBehaviour role)  // removed ?
     {
         return AmongUsClient.Instance.AmHost && !Disabled;
     }
@@ -58,7 +58,7 @@ public sealed class DraftCancelButton : TownOfUsButton
         DraftModePlugin.Logger.LogInfo("[DraftCancelButton] Cancel clicked by host.");
         DraftNetworkHelper.BroadcastCancelDraft();
         DraftNetworkHelper.BroadcastCreateNotif(
-            "<color=#FF0000>Draft Mode</color> has been cancelled by the <color=#FFBFCC><b>Host</b></color>!"); // ADD THIS
+            "<color=#FF0000>Draft Mode</color> has been cancelled by the <color=#FFBFCC><b>Host</b></color>!");
         DraftManager.Reset(cancelledBeforeCompletion: true);
         DraftNetworkHelper.BroadcastDraftEnd();
         Hide();

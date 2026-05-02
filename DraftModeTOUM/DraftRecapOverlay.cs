@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 using TMPro;
 using System.Collections;
@@ -25,14 +25,13 @@ namespace DraftModeTOUM
     [RegisterInIl2Cpp]
     public class DraftRecapOverlay(IntPtr ip) : MonoBehaviour(ip)
     {
-        private static DraftRecapOverlay? _instance;
+        private static DraftRecapOverlay _instance;  // removed ?
 
         public static void Show(List<RecapEntry> entries)
         {
             Hide();
             var go = new GameObject("DraftRecapOverlay");
 
-            
             if (HudManager.Instance != null)
             {
                 go.transform.SetParent(HudManager.Instance.transform, false);
@@ -49,14 +48,13 @@ namespace DraftModeTOUM
 
         public static void Hide()
         {
-            
             if (_instance != null)
             {
                 try
                 {
                     if (_instance.gameObject != null)
                     {
-                        _instance.gameObject.SetActive(false); 
+                        _instance.gameObject.SetActive(false);
                         Destroy(_instance.gameObject);
                     }
                 }
@@ -64,7 +62,6 @@ namespace DraftModeTOUM
                 _instance = null;
             }
 
-            
             var leftover = GameObject.Find("DraftRecapOverlay");
             if (leftover != null)
             {
@@ -72,7 +69,6 @@ namespace DraftModeTOUM
                 Destroy(leftover);
             }
 
-            
             var oldRoot = GameObject.Find("RecapRoot");
             if (oldRoot != null)
             {
@@ -89,7 +85,6 @@ namespace DraftModeTOUM
             var font = HudManager.Instance.TaskPanel.taskText.font;
             var fontMat = HudManager.Instance.TaskPanel.taskText.fontMaterial;
 
-            
             var revealTexts = new List<TextMeshPro>();
 
             var title = MakeText(gameObject, "Title", font, fontMat, 2.5f, new Vector3(0, 2.45f, 0));

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using DraftModeTOUM.Managers;
 using Reactor.Utilities.Attributes;
 using UnityEngine;
@@ -8,7 +8,7 @@ namespace DraftModeTOUM
     [RegisterInIl2Cpp]
     public class DraftTicker(IntPtr ip) : MonoBehaviour(ip)
     {
-        private static DraftTicker? _instance;
+        private static DraftTicker _instance;  // removed ?
 
         public static void EnsureExists()
         {

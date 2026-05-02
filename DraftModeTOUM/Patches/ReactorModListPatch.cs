@@ -1,20 +1,14 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using Hazel;
 using System;
 using System.Reflection;
 
 namespace DraftModeTOUM.Patches
 {
-    
-    
-    
-    
-    
-    
     [HarmonyPatch]
     public static class ReactorModListPatch
     {
-        static MethodBase? TargetMethod()
+        static MethodBase TargetMethod()  // removed ?
         {
             try
             {
@@ -40,13 +34,10 @@ namespace DraftModeTOUM.Patches
             }
         }
 
-        static Exception? Finalizer(Exception? __exception)
+        static Exception Finalizer(Exception __exception)  // removed both ?
         {
             if (__exception is System.Collections.Generic.KeyNotFoundException knfe)
             {
-                
-                
-                
                 DraftModePlugin.Logger.LogWarning(
                     $"[ReactorModListPatch] Swallowed unknown mod key crash: {knfe.Message}");
                 return null;

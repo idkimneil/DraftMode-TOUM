@@ -6,11 +6,11 @@ namespace DraftModeTOUM.Managers
     {
         public string  RoleName { get; }
         public string  TeamName { get; }
-        public Sprite? Icon     { get; }
+        public Sprite  Icon     { get; }  // removed ?
         public Color   Color    { get; }
         public int     Index    { get; }
 
-        public DraftRoleCard(string roleName, string teamName, Sprite? icon, Color color, int index)
+        public DraftRoleCard(string roleName, string teamName, Sprite icon, Color color, int index)  // removed ?
         {
             RoleName = roleName;
             TeamName = teamName;
