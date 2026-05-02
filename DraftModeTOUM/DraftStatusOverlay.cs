@@ -440,7 +440,15 @@ namespace DraftModeTOUM
 
             var cardBg = actualCard.GetComponent<SpriteRenderer>();
             if (cardBg   != null) cardBg.color  = color;
-            if (rollover != null) { rollover.OutColor = color; rollover.OverColor = Color.white; }
+            if (rollover != null)
+            {
+                rollover.OutColor  = color;
+                rollover.OverColor = new Color(
+                    Mathf.Min(color.r * 1.3f, 1f),
+                    Mathf.Min(color.g * 1.3f, 1f),
+                    Mathf.Min(color.b * 1.3f, 1f),
+                    color.a);
+            }
             if (roleText != null) roleText.color = color;
 
             foreach (var tmp in _roleCardNewRoleObj.GetComponentsInChildren<TMPro.TMP_Text>())
@@ -526,8 +534,16 @@ namespace DraftModeTOUM
         {
             while (wiki != null)
                 yield return null;
+
+            // Force an immediate menu recheck — _lastMenuOpen may be stale from the throttle timer
+            _lastMenuOpen   = IsAnyMenuOpen();
+            _menuCheckTimer = 0f;
+
             if (_roleCardNewRoleObj != null && !_lastMenuOpen)
+            {
                 _roleCardNewRoleObj.SetActive(true);
+                _cardHiddenForMenu = false;
+            }
         }
 
         // ── Menu detection — throttled to ~10 Hz ──────────────────────────────
