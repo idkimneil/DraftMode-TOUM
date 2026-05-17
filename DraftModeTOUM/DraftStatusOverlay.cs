@@ -51,6 +51,7 @@ namespace DraftModeTOUM
         private OverlayState _currentState       = OverlayState.Hidden;
 
         private bool _cardHiddenForMenu = false;
+        private bool _cardReady         = false;   // guards hover until pop-in finishes
 
         private List<GameObject> _hiddenHudChildren = new List<GameObject>();
 
@@ -321,7 +322,6 @@ namespace DraftModeTOUM
 
             if (_backdropWashRenderer != null)
             {
-                // Fixed cyan-blue wash — no my-turn color blending
                 var wash = new Color(0f, 0.78f, 1f, 0.11f + pulse * 0.08f);
                 _backdropWashRenderer.color = wash;
                 _backdropWashRenderer.transform.localScale =
@@ -339,7 +339,6 @@ namespace DraftModeTOUM
                     Mathf.Cos(_waitAnimTime * 0.42f + i) * 0.14f, 0.01f);
                 beam.transform.localRotation =
                     Quaternion.Euler(0f, 0f, side * (12f + pulse * 8f));
-                // Fixed beam colors — left warm gold, right cool purple
                 var c = i == 0
                     ? new Color(1f, 0.82f, 0.12f, 0.14f + pulse * 0.06f)
                     : new Color(0.72f, 0.42f, 1f, 0.12f + pulse * 0.06f);
@@ -480,11 +479,13 @@ namespace DraftModeTOUM
                 ushort capturedId = roleId;
                 passiveButton.OnClick.AddListener((Action)(() => OpenWiki(capturedId)));
 
+                // Guard hover handlers so they cannot fire during the pop-in animation.
+                // _cardReady is set to true only after CoPopInCard fully completes.
                 passiveButton.OnMouseOver.RemoveAllListeners();
                 passiveButton.OnMouseOver.AddListener((Action)(() =>
                 {
-                    if (_roleCardNewRoleObj != null)
-                        _roleCardNewRoleObj.transform.localScale = Vector3.one * (CardScale * 1.08f);
+                    if (!_cardReady || _roleCardNewRoleObj == null) return;
+                    _roleCardNewRoleObj.transform.localScale = Vector3.one * (CardScale * 1.08f);
                 }));
                 passiveButton.OnMouseOut.RemoveAllListeners();
                 passiveButton.OnMouseOut.AddListener((Action)(() =>
@@ -496,7 +497,8 @@ namespace DraftModeTOUM
 
             _roleCardNewRoleObj.SetActive(true);
             _cardHiddenForMenu = false;
-            Coroutines.Start(CoPopInCard(_roleCardNewRoleObj.transform));
+            _cardReady         = false;   // will be set true when pop-in finishes
+            Coroutines.Start(CoPopInCard(_roleCardNewRoleObj.transform, this));
         }
 
         // ── Wiki ──────────────────────────────────────────────────────────────
@@ -543,6 +545,7 @@ namespace DraftModeTOUM
             {
                 _roleCardNewRoleObj.SetActive(true);
                 _cardHiddenForMenu = false;
+                _cardReady         = true;   // card is fully visible again — re-enable hover
             }
         }
 
@@ -579,19 +582,26 @@ namespace DraftModeTOUM
                 _roleCardNewRoleObj = null;
             }
             _cardHiddenForMenu = false;
+            _cardReady         = false;
         }
 
-        private static IEnumerator CoPopInCard(Transform holder)
+        private static IEnumerator CoPopInCard(Transform holder, DraftStatusOverlay owner)
         {
             holder.localScale = Vector3.zero;
             float duration    = 0.25f;
             for (float t = 0f; t < duration; t += Time.deltaTime)
             {
+                if (holder == null) yield break;
                 float s = Mathf.LerpUnclamped(0f, CardScale, EaseOutBack(t / duration));
                 holder.localScale = Vector3.one * s;
                 yield return null;
             }
-            holder.localScale = Vector3.one * CardScale;
+            if (holder != null)
+                holder.localScale = Vector3.one * CardScale;
+
+            // Animation complete — allow hover interaction now
+            if (owner != null)
+                owner._cardReady = true;
         }
 
         private static float EaseOutBack(float t)
@@ -638,6 +648,8 @@ namespace DraftModeTOUM
                 {
                     _roleCardNewRoleObj.SetActive(true);
                     _cardHiddenForMenu = false;
+                    // Card was hidden while the animation was already done, so re-allow hover.
+                    _cardReady = true;
                 }
             }
 
@@ -814,9 +826,6 @@ namespace DraftModeTOUM
             if (r != null) { r.sortingLayerName = "UI"; r.sortingOrder = 50; }
             return tmp;
         }
-
-        // ── Sprite factories ──────────────────────────────────────────────────
-
         private static Sprite _softGlow;
         private static Sprite MakeSoftGlowSprite()
         {
@@ -857,8 +866,6 @@ namespace DraftModeTOUM
             return _white;
         }
     }
-
-    // ── PingTracker Harmony patches ───────────────────────────────────────────
 
     [HarmonyPatch(typeof(PingTracker), nameof(PingTracker.Update))]
     public static class PingTrackerDraftPrefix
