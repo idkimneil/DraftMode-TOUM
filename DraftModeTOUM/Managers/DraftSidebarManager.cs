@@ -13,12 +13,8 @@ namespace DraftModeTOUM.Managers
         private static bool _active = false;
         private static readonly string ColPlayerName  = "#ffdd00ff";
         private static readonly string ColLocalPlayer = "#8bd5f9ff";
-
-        // ── Banner ────────────────────────────────────────────────────────────
         private static GameObject    _bannerGo;
         private static SpriteRenderer _bannerSr;
-
-        // ── Activate / Deactivate ─────────────────────────────────────────────
 
         public static void Activate()
         {
@@ -36,28 +32,18 @@ namespace DraftModeTOUM.Managers
 
             if (_bannerGo != null) _bannerGo.SetActive(false);
 
-            // Clear the text we wrote so TOU-Mira's UpdateRoleList reclaims the panel
-            // on its next tick and shows the normal role/neutral list again.
             var tmp = HudManagerPatches.RoleListTextComp;
             if (tmp != null)
                 tmp.text = string.Empty;
 
-            // Also hide the panel so TOU-Mira can restore it properly on next Update tick.
             var roleList = HudManagerPatches.RoleList;
             if (roleList != null)
                 roleList.SetActive(false);
 
-            // Make sure IsHoveringRoleList is not stuck true — that would prevent
-            // TOU-Mira's UpdateRoleList from writing new text.
             HudManagerPatches.IsHoveringRoleList = false;
 
             DraftModePlugin.Logger.LogInfo("[DraftSidebar] Deactivated.");
         }
-
-        /// <summary>
-        /// Nulls out the cached banner references (call on disconnect / scene change
-        /// so EnsureBanner() re-parents to the new HUD on the next draw).
-        /// </summary>
         public static void ClearBannerRef()
         {
             _bannerGo = null;
@@ -65,16 +51,11 @@ namespace DraftModeTOUM.Managers
         }
 
         public static bool IsActive => _active;
-
-        // ── Draw ──────────────────────────────────────────────────────────────
-
         public static void DrawSidebar()
         {
             var roleList = HudManagerPatches.RoleList;
             var tmp      = HudManagerPatches.RoleListTextComp;
             if (roleList == null || tmp == null) return;
-
-            // Lazy-init the banner in case RoleList wasn't ready at Activate() time.
             EnsureBanner();
             if (_bannerGo != null && !_bannerGo.activeSelf)
                 _bannerGo.SetActive(true);
@@ -85,12 +66,8 @@ namespace DraftModeTOUM.Managers
             tmp.fontSizeMax = 3f;
             tmp.text        = BuildText();
         }
-
-        // ── Banner helpers ────────────────────────────────────────────────────
-
         private static void EnsureBanner()
         {
-            // Reuse if already valid.
             if (_bannerGo != null) return;
 
             var roleList = HudManagerPatches.RoleList;
@@ -107,11 +84,6 @@ namespace DraftModeTOUM.Managers
             if (sprite != null)
             {
                 _bannerSr.sprite = sprite;
-
-                // DraftBanner.png is loaded at PPU 50 (see DraftAssets.cs).
-                // Rendered size in Unity units = texturePx / 50.
-                // Adjust localScale and localPosition once you see it in-game;
-                // these defaults place it flush above the first text line.
                 _bannerGo.transform.localScale    = Vector3.one * 0.38f;
                 _bannerGo.transform.localPosition = new Vector3(1.55001f, -1.0001f, -1f);
             }
@@ -119,12 +91,8 @@ namespace DraftModeTOUM.Managers
             {
                 DraftModePlugin.Logger.LogWarning("[DraftSidebar] DraftBanner sprite failed to load.");
             }
-
-            // Start hidden; Activate() / DrawSidebar() will enable it.
             _bannerGo.SetActive(false);
         }
-
-        // ── Settings check ────────────────────────────────────────────────────
 
         private static bool IsSettingEnabled()
         {
@@ -132,13 +100,10 @@ namespace DraftModeTOUM.Managers
             return settings != null && settings.ShowDraftSidebar.Value;
         }
 
-        // ── Text building ─────────────────────────────────────────────────────
-
         private static string BuildText()
         {
             var sb = new StringBuilder();
 
-            // Blank first line acts as a vertical spacer below the banner image.
             sb.AppendLine();
             sb.AppendLine();
             sb.AppendLine();
@@ -210,8 +175,6 @@ namespace DraftModeTOUM.Managers
         }
     }
 
-    // ── Harmony hooks ─────────────────────────────────────────────────────────
-
     [HarmonyPatch(typeof(HudManagerPatches), nameof(HudManagerPatches.UpdateRoleList))]
     public static class DraftSidebarUpdateRoleListPatch
     {
@@ -251,12 +214,6 @@ namespace DraftModeTOUM.Managers
         public static void Postfix() => DraftSidebarManager.Deactivate();
     }
 
-    /// <summary>
-    /// Catches all draft-end paths on both host and client:
-    /// - Normal completion → SetState(Hidden) via CoEndDraftSequence
-    /// - Cancel → already caught above, but this is a universal safety net
-    /// Every exit path transitions the overlay to Hidden, so this is reliable.
-    /// </summary>
     [HarmonyPatch(typeof(DraftStatusOverlay), nameof(DraftStatusOverlay.SetState))]
     public static class DraftSidebarDeactivateOnOverlayHidden
     {
@@ -268,11 +225,6 @@ namespace DraftModeTOUM.Managers
         }
     }
 
-    /// <summary>
-    /// Belt-and-suspenders: deactivate when the game actually starts
-    /// so the sidebar never leaks into in-game.
-    /// Also clears the banner ref so it re-parents correctly on the next lobby.
-    /// </summary>
     [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CoBegin))]
     public static class DraftSidebarDeactivateOnIntro
     {
@@ -295,34 +247,16 @@ namespace DraftModeTOUM.Managers
         }
     }
 
-    // ── RoleListHoverComponent suppression ────────────────────────────────────
-    //
-    // RoleListHoverComponent lives on HudManager.Instance.gameObject and drives
-    // the "hover the role list panel to show bucket tooltips" feature.
-    // It sets HudManagerPatches.IsHoveringRoleList = true while the mouse is
-    // over the panel, which blocks UpdateRoleList from writing new text
-    // (HudManagerPatches.UpdateRoleList: "if (!IsHoveringRoleList) text = ...").
-    //
-    // During draft we own the role list panel for the sidebar, so we patch
-    // RoleListHoverComponent.Update: when a draft is active the original is
-    // skipped and IsHoveringRoleList is forced to false, ensuring our
-    // DrawSidebar() postfix is never blocked.
-    //
-    // OnEnable is NOT patched here — it is inherited from MonoBehaviour and
-    // Harmony cannot patch inherited methods via the subtype.
-
     [HarmonyPatch(typeof(RoleListHoverComponent), nameof(RoleListHoverComponent.Update))]
     public static class RoleListHoverSuppressUpdate
     {
         [HarmonyPrefix]
         public static bool Prefix()
         {
-            if (!DraftManager.IsDraftActive) return true; // run normally outside draft
+            if (!DraftManager.IsDraftActive) return true;
 
-            // Draft is active: prevent hover detection and clear any stale flag so
-            // our DrawSidebar postfix is never blocked by UpdateRoleList's guard.
             HudManagerPatches.IsHoveringRoleList = false;
-            return false; // skip original Update
+            return false;
         }
     }
 }

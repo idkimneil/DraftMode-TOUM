@@ -10,8 +10,7 @@ using TownOfUs.Buttons;
 using TownOfUs.Utilities;
 using UnityEngine;
 
-// Kept in the root namespace so DraftModePlugin.cs and DraftCancelButtonPatch.cs
-// can reference it without any extra using directive.
+
 namespace DraftModeTOUM;
 
 public sealed class DraftCancelButton : TownOfUsButton
@@ -40,7 +39,7 @@ public sealed class DraftCancelButton : TownOfUsButton
 
     public override bool Disabled { get; set; } = true;
 
-    public override bool Enabled(RoleBehaviour role)  // removed ?
+    public override bool Enabled(RoleBehaviour role)
     {
         return AmongUsClient.Instance.AmHost && !Disabled;
     }

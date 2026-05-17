@@ -13,8 +13,6 @@ using Reactor.Networking;
 using Reactor.Networking.Attributes;
 using Reactor.Utilities;
 using UnityEngine;
-
-// Reactor credits API
 using Reactor;
 
 namespace DraftModeTOUM
@@ -56,7 +54,7 @@ namespace DraftModeTOUM
         {
             public const string PLUGIN_GUID = "com.draftmodetoum.mod";
             public const string PLUGIN_NAME = "DraftModeTOUM";
-            public const string PLUGIN_VERSION = "1.0.9";
+            public const string PLUGIN_VERSION = "1.1.0";
         }
 
         [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnDisconnected))]

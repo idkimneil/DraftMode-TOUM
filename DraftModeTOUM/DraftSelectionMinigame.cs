@@ -19,8 +19,6 @@ namespace DraftModeTOUM
     {
         public static DraftScreenController Instance { get; private set; }
 
-        // ── Card visual caches ────────────────────────────────────────────────
-
         private sealed class DraftCardVisuals
         {
             public SpriteRenderer Aura;
@@ -28,15 +26,13 @@ namespace DraftModeTOUM
 
         private sealed class DraftCardIdleCache
         {
-            public Transform Card;
-            public Vector3 BasePosition;
+            public Transform Card; 
+            public Transform Holder; 
+            public Vector3 BasePosition; 
             public Quaternion BaseRotation;
         }
 
         private static readonly Dictionary<Transform, DraftCardVisuals> _cardVisuals = new();
-
-        // ── Fields ────────────────────────────────────────────────────────────
-
         private GameObject _screenRoot;
         private ushort[] _offeredRoleIds;
         private bool _hasPicked;
@@ -59,8 +55,6 @@ namespace DraftModeTOUM
         private readonly List<DraftCardIdleCache> _idleCardCaches = new();
         private readonly Dictionary<Transform, DraftCardIdleCache> _idleCardCacheByTransform = new();
         private Transform _hoveredCard;
-
-        // Backdrop animation — static color, no hover-driven RGB changes
         private readonly Color _backdropPulseColor = new Color(0f, 0.95f, 1f, 0.4f);
         private float _backdropPulse;
         private float _backdropTime;
@@ -87,8 +81,6 @@ namespace DraftModeTOUM
             if (lower.Contains("neutral")) return new Color32(180, 180, 180, 255);
             return Color.white;
         }
-
-        // ── Bottom-center timer label + progress bar ──────────────────────────
 
         private void BuildBottomTimer()
         {
@@ -170,8 +162,6 @@ namespace DraftModeTOUM
             }
         }
 
-        // ── Show / Hide ───────────────────────────────────────────────────────
-
         public static void Show(ushort[] roleIds)
         {
             Hide();
@@ -210,8 +200,6 @@ namespace DraftModeTOUM
             Destroy(Instance.gameObject);
             Instance = null;
         }
-
-        // ── Build screen ──────────────────────────────────────────────────────
 
         private void BuildScreen()
         {
@@ -347,8 +335,6 @@ namespace DraftModeTOUM
             return false;
         }
 
-        // ── Animated galaxy backdrop ──────────────────────────────────────────
-
         private void BuildSelectionBackdrop()
         {
             if (HudManager.Instance == null) return;
@@ -441,7 +427,6 @@ namespace DraftModeTOUM
             }
         }
 
-        // Backdrop animates with a fixed cyan/teal color — no hover-driven color changes
         private void UpdateSelectionBackdrop()
         {
             if (_selectionBackdrop == null) return;
@@ -450,7 +435,6 @@ namespace DraftModeTOUM
             _backdropPulse = Mathf.MoveTowards(_backdropPulse, 0f, Time.deltaTime * 1.35f);
 
             Color idle = new Color(0.0f, 0.55f, 0.95f, 0.24f);
-            // Always blend toward the fixed cyan backdrop color, never toward a card-hover color
             Color wash = Color.Lerp(idle, _backdropPulseColor, Mathf.Clamp01(_backdropPulse));
             if (_selectionBackdropWash != null)
             {
@@ -511,27 +495,17 @@ namespace DraftModeTOUM
             }
         }
 
-        // ── Card idle motion ──────────────────────────────────────────────────
-
-        private void RegisterIdleCard(Transform card)
+        private void RegisterIdleCard(Transform card, Transform holder)
         {
             if (card == null) return;
             if (!_idleCardCacheByTransform.TryGetValue(card, out var cache))
             {
-                cache = new DraftCardIdleCache { Card = card };
+                cache = new DraftCardIdleCache { Card = card, Holder = holder };
                 _idleCardCacheByTransform[card] = cache;
                 _idleCardCaches.Add(cache);
             }
             cache.BasePosition = card.localPosition;
             cache.BaseRotation = card.localRotation;
-        }
-
-        private void SetCardToIdleBase(Transform card)
-        {
-            if (card == null) return;
-            if (!_idleCardCacheByTransform.TryGetValue(card, out var cache)) return;
-            card.localPosition = cache.BasePosition;
-            card.localRotation = cache.BaseRotation;
         }
 
         private void UpdateCardIdleMotion()
@@ -542,7 +516,7 @@ namespace DraftModeTOUM
                 var cache = _idleCardCaches[i];
                 var card = cache.Card;
                 if (card == null) continue;
-                if (card == _hoveredCard) { SetCardToIdleBase(card); continue; }
+                if (card == _hoveredCard) continue;
 
                 float phase = i * 0.79f;
                 float bob = Mathf.Sin(_backdropTime * 1.15f + phase) * 0.035f;
@@ -552,9 +526,6 @@ namespace DraftModeTOUM
                     Quaternion.Euler(0f, 0f, Mathf.Sin(_backdropTime * 0.9f + phase) * 1.35f);
             }
         }
-
-        // ── Alliance aura (fixed per-faction color, no hover RGB) ─────────────
-
         private static DraftCardVisuals DraftCardVisualCache(Transform card)
         {
             if (!_cardVisuals.TryGetValue(card, out var visuals))
@@ -607,8 +578,6 @@ namespace DraftModeTOUM
             SetAllianceAura(card, aura, 0.26f, 1f);
         }
 
-        // ── Card creation ─────────────────────────────────────────────────────
-
         private static PassiveButton CreateCard(
             GameObject rolePrefab,
             Transform rolesHolder,
@@ -636,19 +605,18 @@ namespace DraftModeTOUM
             float tiltScale = Mathf.Lerp(1f, 0.25f, Mathf.InverseLerp(3f, 9f, totalCards));
             float randZ = (-10f + tiltIndex * 5f) * tiltScale
                           + UnityEngine.Random.Range(-1.5f, 1.5f) * tiltScale;
-            Vector3 hoverBasePosition = Vector3.zero;
 
             passiveButton.OnMouseOver.AddListener((UnityAction)(() =>
             {
-                if (Instance != null) Instance._hoveredCard = actualCard;
-                SetCardHoverDepth(newRoleObj.transform, hoverBasePosition, hovered: true);
+                if (Instance == null) return;
+                Instance._hoveredCard = actualCard;
                 newRoleObj.transform.localScale = Vector3.one * (cardScale * 1.075f);
             }));
+
             passiveButton.OnMouseOut.AddListener((UnityAction)(() =>
             {
                 if (Instance != null && Instance._hoveredCard == actualCard)
                     Instance._hoveredCard = null;
-                SetCardHoverDepth(newRoleObj.transform, hoverBasePosition, hovered: false);
                 newRoleObj.transform.localScale = Vector3.one * cardScale;
             }));
 
@@ -675,7 +643,6 @@ namespace DraftModeTOUM
                     newRoleObj.transform.localPosition.x, 0f, cardIndex);
             }
 
-            hoverBasePosition = newRoleObj.transform.localPosition;
             newRoleObj.transform.localScale = Vector3.one * cardScale;
 
             roleText.text = roleName;
@@ -699,7 +666,6 @@ namespace DraftModeTOUM
             teamText.fontSizeMax = 3.8f;
             teamText.color = GetTeamColor(teamName);
 
-            // Set sorting so cards render above backdrop
             foreach (var sr in newRoleObj.GetComponentsInChildren<SpriteRenderer>(true))
             { sr.sortingLayerName = "UI"; sr.sortingOrder = 70; }
             foreach (var tmp in newRoleObj.GetComponentsInChildren<TMPro.TMP_Text>(true))
@@ -712,15 +678,6 @@ namespace DraftModeTOUM
 
             return passiveButton;
         }
-
-        private static void SetCardHoverDepth(Transform holder, Vector3 hoverBasePosition, bool hovered)
-        {
-            if (holder == null) return;
-            float z = hoverBasePosition.z + (hovered ? -10f : 0f);
-            holder.localPosition = new Vector3(hoverBasePosition.x, hoverBasePosition.y, z);
-        }
-
-        // ── Card animation ────────────────────────────────────────────────────
 
         private static IEnumerator CoAnimateCards(Transform rolesHolder, float cardScale, bool useGrid, int totalCards)
         {
@@ -736,7 +693,7 @@ namespace DraftModeTOUM
                 if (child == null) continue;
                 int animIndex = useGrid ? (i % cols) : i;
                 float stagger = Mathf.Min(i, 7) * DraftCardRevealStaggerSeconds;
-                Coroutines.Start(CoAnimateCardRevealSequence(child, animIndex, totalCards, cardScale, stagger));
+                Coroutines.Start(CoAnimateCardRevealSequence(child, card, animIndex, totalCards, cardScale, stagger));
             }
 
             yield return CoWaitForSharedReadyGate(totalCards);
@@ -750,7 +707,7 @@ namespace DraftModeTOUM
             yield return new WaitForSeconds(Mathf.Max(0f, Mathf.Max(DraftReadyGateSeconds, revealBudget)));
         }
 
-        private static IEnumerator CoAnimateCardRevealSequence(Transform child, int animIndex, int totalCards, float cardScale, float stagger)
+        private static IEnumerator CoAnimateCardRevealSequence(Transform child, Transform holder, int animIndex, int totalCards, float cardScale, float stagger)
         {
             if (stagger > 0f)
                 yield return new WaitForSeconds(stagger);
@@ -759,7 +716,7 @@ namespace DraftModeTOUM
             yield return CoAnimateCardIn(child, animIndex, totalCards, cardScale);
             if (child == null) yield break;
 
-            Instance?.RegisterIdleCard(child);
+            Instance?.RegisterIdleCard(child, holder);
 
             try
             {
@@ -777,7 +734,6 @@ namespace DraftModeTOUM
         {
             if (card == null) yield break;
 
-            // Use the aura that's already attached (fixed faction color)
             var visuals = DraftCardVisualCache(card);
             Color color = visuals.Aura != null ? visuals.Aura.color : new Color(0f, 0.95f, 1f, 0.46f);
             color.a = 0.68f;
@@ -859,9 +815,6 @@ namespace DraftModeTOUM
             const float c1 = 1.70158f, c3 = c1 + 1f;
             return 1f + c3 * Mathf.Pow(t - 1f, 3f) + c1 * Mathf.Pow(t - 1f, 2f);
         }
-
-        // ── Update ────────────────────────────────────────────────────────────
-
         private float _localTimeLeft = -1f;
         private bool _cardsReady = false;
 
@@ -912,8 +865,6 @@ namespace DraftModeTOUM
             }
         }
 
-        // ── Card click ────────────────────────────────────────────────────────
-
         private void OnCardClicked(int index)
         {
             if (_hasPicked) return;
@@ -923,9 +874,6 @@ namespace DraftModeTOUM
         }
 
         private void DestroySelf() => Hide();
-
-        // ── Sprite factories ──────────────────────────────────────────────────
-
         private static Sprite _softGlowSprite;
         private static Sprite MakeSoftGlowSprite()
         {

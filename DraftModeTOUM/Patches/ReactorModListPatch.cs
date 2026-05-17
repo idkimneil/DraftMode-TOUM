@@ -8,7 +8,7 @@ namespace DraftModeTOUM.Patches
     [HarmonyPatch]
     public static class ReactorModListPatch
     {
-        static MethodBase TargetMethod()  // removed ?
+        static MethodBase TargetMethod()
         {
             try
             {

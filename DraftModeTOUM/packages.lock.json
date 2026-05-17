@@ -2,24 +2,69 @@
   "version": 1,
   "dependencies": {
     "net6.0": {
+      "AllOfUs.MiraAPI": {
+        "type": "Direct",
+        "requested": "[0.4.0, )",
+        "resolved": "0.4.0",
+        "contentHash": "lO0z7VRvdNhoU04CmAKXfe0hFM2OqM6KaludD3wiT9OBvTYP+Hbep7Ira+G8EXPe44oHGLvqvp0/5jqDnxvNsA==",
+        "dependencies": {
+          "BepInEx.Unity.IL2CPP": "6.0.0-be.735",
+          "Reactor": "2.5.0-ci.371"
+        }
+      },
+      "AmongUs.GameLibs.Android": {
+        "type": "Direct",
+        "requested": "[2026.3.17, )",
+        "resolved": "2026.3.17",
+        "contentHash": "R2rwDxpbOuKAwJJ5imEatoDSVMnDfdtQ9Acqi6nn3pBFd7cCCp11YSqV2MDVd4gqtUoDHaPkeG++vObOs15vXg=="
+      },
+      "BepInEx.AutoPlugin": {
+        "type": "Direct",
+        "requested": "[1.1.0, )",
+        "resolved": "1.1.0",
+        "contentHash": "/7Nmc1EA9lYlGBiyz6qPAaHvlcJHEjFZ1RFpGX+8EBj3GrgoX5kbpnZusuSHoOlLx0l+CnzKuQNE54B8UaGPyw=="
+      },
+      "BepInEx.IL2CPP.MSBuild": {
+        "type": "Direct",
+        "requested": "[2.0.1, )",
+        "resolved": "2.0.1",
+        "contentHash": "hUZjCV0t8dkw/Z/zq4Zl405QP7frBk/LVfMdUmUz+7XOhGd7lYPKrR48A5vbGl2QeHudMxlkXzAr9WM3Duq2SQ=="
+      },
+      "BepInEx.Unity.IL2CPP": {
+        "type": "Direct",
+        "requested": "[6.0.0-be.735, )",
+        "resolved": "6.0.0-be.735",
+        "contentHash": "2+eFJGKMR1GFPeU9wuF+TVrMANIaWIc/6N9e8x4b7b/fNiY9B6vicYNiMDb2deYQpWZtOei+2btnar5dDE5BPg==",
+        "dependencies": {
+          "BepInEx.Core": "6.0.0-be.735",
+          "BepInEx.Unity.Common": "6.0.0-be.735",
+          "HarmonyX": "2.10.2",
+          "Iced": "1.21.0",
+          "Il2CppInterop.Generator": "1.4.6-ci.426",
+          "Il2CppInterop.HarmonySupport": "1.4.6-ci.426",
+          "Il2CppInterop.Runtime": "1.4.6-ci.426",
+          "MonoMod.RuntimeDetour": "22.7.31.1",
+          "Samboy063.Cpp2IL.Core": "2022.1.0-pre-release.19"
+        }
+      },
+      "Reactor": {
+        "type": "Direct",
+        "requested": "[2.5.0-ci.371, )",
+        "resolved": "2.5.0-ci.371",
+        "contentHash": "LMKHi2CPACJJkBK117HT6zKS8mkv1c/RUZusYlnFExS2nGCD/haqf+YkTXyK561T5+BSg0m0R4ubSG30cdYDNg==",
+        "dependencies": {
+          "BepInEx.Unity.IL2CPP": "6.0.0-be.735"
+        }
+      },
       "TownOfUsMira": {
         "type": "Direct",
-        "requested": "[*-*, )",
+        "requested": "[1.6.0, )",
         "resolved": "1.6.0",
         "contentHash": "QePKPUQTQLci9fvNF12wrvCbU3uN+o1HZVGlBX3LMFVAUGfk9mkzum3lzz/FkC7e8bhU5pbiucshSq1CPu+tpQ==",
         "dependencies": {
           "AllOfUs.MiraAPI": "0.3.9-ci.904",
           "BepInEx.Unity.IL2CPP": "6.0.0-be.735",
           "Reactor": "2.5.0-ci.371"
-        }
-      },
-      "AllOfUs.MiraAPI": {
-        "type": "Transitive",
-        "resolved": "0.3.9-ci.904",
-        "contentHash": "pHldg5KSNNoVNfnqNktlVS3PAfwq8+bRX3hlA1Vrc9MZs6cy1mPzwMJoE6bgxjSc6z91vp4zqxCHxESm6ZaQcA==",
-        "dependencies": {
-          "BepInEx.Unity.IL2CPP": "6.0.0-be.735",
-          "Reactor": "2.3.1"
         }
       },
       "AsmResolver": {
@@ -86,22 +131,6 @@
         "dependencies": {
           "AssetRipper.Primitives": "3.1.3",
           "MonoMod.Utils": "22.7.31.1"
-        }
-      },
-      "BepInEx.Unity.IL2CPP": {
-        "type": "Transitive",
-        "resolved": "6.0.0-be.735",
-        "contentHash": "2+eFJGKMR1GFPeU9wuF+TVrMANIaWIc/6N9e8x4b7b/fNiY9B6vicYNiMDb2deYQpWZtOei+2btnar5dDE5BPg==",
-        "dependencies": {
-          "BepInEx.Core": "6.0.0-be.735",
-          "BepInEx.Unity.Common": "6.0.0-be.735",
-          "HarmonyX": "2.10.2",
-          "Iced": "1.21.0",
-          "Il2CppInterop.Generator": "1.4.6-ci.426",
-          "Il2CppInterop.HarmonySupport": "1.4.6-ci.426",
-          "Il2CppInterop.Runtime": "1.4.6-ci.426",
-          "MonoMod.RuntimeDetour": "22.7.31.1",
-          "Samboy063.Cpp2IL.Core": "2022.1.0-pre-release.19"
         }
       },
       "Disarm": {
@@ -207,14 +236,6 @@
           "System.Reflection.Emit.ILGeneration": "4.7.0",
           "System.Reflection.Emit.Lightweight": "4.7.0",
           "System.Reflection.TypeExtensions": "4.7.0"
-        }
-      },
-      "Reactor": {
-        "type": "Transitive",
-        "resolved": "2.5.0-ci.371",
-        "contentHash": "LMKHi2CPACJJkBK117HT6zKS8mkv1c/RUZusYlnFExS2nGCD/haqf+YkTXyK561T5+BSg0m0R4ubSG30cdYDNg==",
-        "dependencies": {
-          "BepInEx.Unity.IL2CPP": "6.0.0-be.735"
         }
       },
       "runtime.debian.8-x64.runtime.native.System.Security.Cryptography.OpenSsl": {

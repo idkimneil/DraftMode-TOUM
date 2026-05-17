@@ -25,7 +25,7 @@ namespace DraftModeTOUM
     [RegisterInIl2Cpp]
     public class DraftRecapOverlay(IntPtr ip) : MonoBehaviour(ip)
     {
-        private static DraftRecapOverlay _instance;  // removed ?
+        private static DraftRecapOverlay _instance; 
 
         public static void Show(List<RecapEntry> entries)
         {
