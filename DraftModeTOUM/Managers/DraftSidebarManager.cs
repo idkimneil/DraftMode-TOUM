@@ -116,7 +116,7 @@ namespace DraftModeTOUM.Managers
                 if (s.HasPicked) picked++;
             }
 
-            sb.AppendLine($"<size=64%><color=#6B7178>{picked} / {total}  LOCKED IN</color></size>");
+            sb.AppendLine($"<size=64%><color=#6B7178>{picked} / {total}  ROLES PICKED</color></size>");
             sb.AppendLine();
 
             foreach (int slot in DraftManager.TurnOrder)
@@ -158,38 +158,38 @@ namespace DraftModeTOUM.Managers
 
         private static string BuildRow(int slot, PlayerDraftState state, bool isMe)
         {
-            string you    = isMe ? "  <color=#8BD5F9><b>(you)</b></color>" : string.Empty;
-            string numCol = isMe ? "#8BD5F9" : "#9AA0A6";
+            string you    = isMe ? "  <color=#8BD5F9><b>(YOU)</b></color>" : string.Empty;
+            string numCol = isMe ? "#8BD5F9" : "#a4a69a";
 
             if (state.IsPickingNow && !state.HasPicked && !state.IsDisconnected)
             {
                 float p = (Mathf.Sin(Time.time * 3.0f) + 1f) * 0.5f;                 // smooth breathing
                 Color c = Color.Lerp(new Color(1f, 0.80f, 0.28f), new Color(1f, 0.97f, 0.74f), p);
                 string hex = ColorUtility.ToHtmlStringRGB(c);
-                return $"<color={numCol}><b>#{slot:D2}</b></color>   <b><color=#{hex}>picking...</color></b>{you}";
+                return $"<color={numCol}><b>Player #{slot:D2}</b></color>   <b><color=#{hex}> is picking...</color></b>{you}";
             }
 
             string statusCol, statusTxt;
             if (state.IsDisconnected)
             {
-                statusCol = "#6E6E6E"; statusTxt = "disconnected";
+                statusCol = "#6E6E6E"; statusTxt = "has Disconnected";
             }
             else if (state.HasPicked)
             {
                 switch (state.ChosenRoleId.HasValue ? GetFactionForRole(state.ChosenRoleId.Value) : RoleFaction.Crewmate)
                 {
-                    case RoleFaction.Impostor:       statusCol = "#FF5050"; statusTxt = "Impostor"; break;
+                    case RoleFaction.Impostor:       statusCol = "#FF5050"; statusTxt = "picked IMPOSTOR"; break;
                     case RoleFaction.NeutralKilling:
-                    case RoleFaction.Neutral:        statusCol = "#B06CFF"; statusTxt = "Neutral";  break;
-                    default:                          statusCol = "#5BD7E4"; statusTxt = "Crewmate"; break;
+                    case RoleFaction.Neutral:        statusCol = "#717171"; statusTxt = "picked NEUTRAL";  break;
+                    default:                          statusCol = "#5BD7E4"; statusTxt = "picked CREWMATE"; break;
                 }
             }
             else
             {
-                statusCol = "#555B61"; statusTxt = "waiting";
+                statusCol = "#ffffff"; statusTxt = "is waiting";
             }
 
-            string row = $"<color={numCol}><b>#{slot:D2}</b></color>   <color={statusCol}>{statusTxt}</color>{you}";
+            string row = $"<color={numCol}><b>Player #{slot:D2}</b></color>   <color={statusCol}>{statusTxt}</color>{you}";
             if (isMe)
                 return $"<mark=#8BD5F910>{row}</mark>";
             return row;

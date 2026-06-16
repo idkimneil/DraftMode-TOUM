@@ -10,6 +10,7 @@ namespace DraftModeTOUM.Managers
 {
     public static class RolePoolBuilder
     {
+        
         public static DraftRolePool BuildPool()
         {
             var pool = new DraftRolePool();

@@ -1,18 +1,13 @@
 using AmongUs.GameOptions;
-using Reactor.Utilities.Attributes;
-using TownOfUs.Networking;
-using DraftModeTOUM;
 using DraftModeTOUM.Patches;
-using MiraAPI.Utilities;
-using HarmonyLib;
 using System;
+using MiraAPI.Hud;
+using MiraAPI.GameOptions;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Reactor.Utilities;
 using UnityEngine;
-using TownOfUs.Utilities;
-using TownOfUs.Assets;
 
 
 namespace DraftModeTOUM.Managers
@@ -32,11 +27,11 @@ namespace DraftModeTOUM.Managers
         public static int  OfferedRolesCount     { get; set; } = 3;
         public static bool ShowRandomOption      { get; set; } = true;
         public static int  ConcurrentPickCount   { get; set; } = 1;
-        public static int  RerollsPerPlayer      { get; set; } = 1;
-
         public static int MaxImpostors       { get; set; } = 2;
         public static int MaxNeutralKillings { get; set; } = 2;
         public static int MaxNeutralPassives { get; set; } = 3;
+        public static int MaxCrewKillings    { get; set; } = 3;
+        public static int MaxCrewPowers      { get; set; } = 3;
 
         internal static bool SkipCountdown { get; private set; } = false;
 
@@ -164,7 +159,7 @@ namespace DraftModeTOUM.Managers
             IsDraftActive = true;
             for (int i = 0; i < playerIds.Count; i++)
             {
-                var state = new PlayerDraftState { PlayerId = playerIds[i], SlotNumber = slotNumbers[i], RerollsRemaining = RerollsPerPlayer };
+                var state = new PlayerDraftState { PlayerId = playerIds[i], SlotNumber = slotNumbers[i]};
                 _slotMap[slotNumbers[i]]  = state;
                 _pidToSlot[playerIds[i]] = slotNumbers[i];
             }
@@ -202,13 +197,12 @@ namespace DraftModeTOUM.Managers
             var players = PlayerControl.AllPlayerControls.ToArray()
                 .Where(p => p != null && !p.Data.Disconnected).ToList();
 
-            // ── Pool selection ────────────────────────────────────────────────
             if (UseRoleListForPool)
             {
                 bool roleListActive = false;
                 try
                 {
-                    var roleOptions = MiraAPI.GameOptions.OptionGroupSingleton<TownOfUs.Options.RoleOptions>.Instance;
+                    var roleOptions = OptionGroupSingleton<TownOfUs.Options.RoleOptions>.Instance;
                     roleListActive = roleOptions != null && roleOptions.RoleListEnabled;
                 }
                 catch { }
@@ -232,7 +226,6 @@ namespace DraftModeTOUM.Managers
             }
 
             if (_pool.RoleIds.Count == 0) return;
-            // ─────────────────────────────────────────────────────────────────
 
             _engine = new DraftDistribution(_pool, BuildConfig(), new UnityRng());
 
@@ -246,7 +239,7 @@ namespace DraftModeTOUM.Managers
             {
                 int  slot = shuffledSlots[i];
                 byte pid  = players[i].PlayerId;
-                _slotMap[slot]  = new PlayerDraftState { PlayerId = pid, SlotNumber = slot, RerollsRemaining = RerollsPerPlayer };
+                _slotMap[slot]  = new PlayerDraftState { PlayerId = pid, SlotNumber = slot};
                 _pidToSlot[pid] = slot;
                 syncPids.Add(pid);
                 syncSlots.Add(slot);
@@ -403,6 +396,7 @@ namespace DraftModeTOUM.Managers
             _endSequenceRunning = false;
             CurrentTurn      = 0;
             TurnTimeLeft     = 0f;
+            CustomButtonSingleton<DraftRerollButton>.Instance.SetUses((int)OptionGroupSingleton<DraftModeOptions>.Instance.RerollsPerPlayer.Value);
             DraftUiManager.CloseAll();
 
             if (cancelledBeforeCompletion)
@@ -525,8 +519,6 @@ namespace DraftModeTOUM.Managers
             TurnTimeLeft     = TurnDuration;
             TurnTimerRunning = false;
 
-            // Just-in-time floor locks: constrain trailing offers to a faction when the players left can no
-            // longer satisfy the configured floors otherwise. Computed up front so DC auto-picks honor it too.
             int playersRemaining = 0;
             for (int i = _turnIndex; i < TurnOrder.Count; i++)
             {
@@ -583,7 +575,7 @@ namespace DraftModeTOUM.Managers
                 var offered = BuildOfferForState(state, _roundOfferReserved,
                     lockOf.TryGetValue(state, out var lf) ? lf : null);
                 state.OfferedRoleIds = offered;
-                DraftNetworkHelper.SendTurnAnnouncement(state.SlotNumber, state.PlayerId, offered, CurrentTurn, state.RerollsRemaining);
+                DraftNetworkHelper.SendTurnAnnouncement(state.SlotNumber, state.PlayerId, offered, CurrentTurn);
             }
 
             DraftUiManager.RefreshTurnList();
@@ -673,12 +665,6 @@ namespace DraftModeTOUM.Managers
             var state = GetStateForPlayer(playerId);
             if (state == null || state.HasPicked) return false;
             if (!_activeSlots.Contains(state.SlotNumber)) return false;
-            if (state.RerollsRemaining <= 0) return false;
-
-            state.RerollsRemaining--;
-
-            // Return this player's current cards to the pool so the fresh offer can draw on them again
-            // (essential when a floor lock leaves only a few cards of the locked faction).
             var prev = new HashSet<ushort>();
             if (state.OfferedRoleIds != null)
                 foreach (var id in state.OfferedRoleIds)
@@ -694,7 +680,7 @@ namespace DraftModeTOUM.Managers
 
             var offered = BuildOfferForState(state, _roundOfferReserved, state.FloorLock, avoid);
             state.OfferedRoleIds = offered;
-            DraftNetworkHelper.SendTurnAnnouncement(state.SlotNumber, state.PlayerId, offered, CurrentTurn, state.RerollsRemaining);
+            DraftNetworkHelper.SendTurnAnnouncement(state.SlotNumber, state.PlayerId, offered, CurrentTurn);
             return true;
         }
 
@@ -943,20 +929,21 @@ namespace DraftModeTOUM.Managers
 
         private static void ApplyLocalSettings()
         {
-            var opts = MiraAPI.GameOptions.OptionGroupSingleton<DraftModeOptions>.Instance;
+            var opts = OptionGroupSingleton<DraftModeOptions>.Instance;
             TurnDuration          = Mathf.Clamp(opts.TurnDurationSeconds.Value, 5f, 60f);
             ShowRecap             = opts.ShowRecap;
             AutoStartAfterDraft   = opts.AutoStartAfterDraft;
             LockLobbyOnDraftStart = opts.LockLobbyOnDraftStart;
             UseRoleChances        = opts.UseRoleChances;
-            UseRoleListForPool    = opts.UseRoleListForPool;   // NEW
+            UseRoleListForPool    = opts.UseRoleListForPool;
             OfferedRolesCount     = Mathf.Clamp(Mathf.RoundToInt(opts.OfferedRolesCount.Value), 1, 9);
             ConcurrentPickCount   = Mathf.Clamp(Mathf.RoundToInt(opts.ConcurrentPicks.Value), 1, 2);
-            RerollsPerPlayer      = Mathf.Clamp(Mathf.RoundToInt(opts.RerollsPerPlayer.Value), 0, 3);
             ShowRandomOption      = opts.ShowRandomOption;
             MaxImpostors          = Mathf.Clamp(Mathf.RoundToInt(opts.MaxImpostors.Value), 0, 10);
             MaxNeutralKillings    = Mathf.Clamp(Mathf.RoundToInt(opts.MaxNeutralKillings.Value), 0, 10);
             MaxNeutralPassives    = Mathf.Clamp(Mathf.RoundToInt(opts.MaxNeutralPassives.Value), 0, 10);
+            MaxCrewKillings       = Mathf.Clamp(Mathf.RoundToInt(opts.MaxCrewKillings.Value), 0, 10);
+            MaxCrewPowers         = Mathf.Clamp(Mathf.RoundToInt(opts.MaxCrewPowers.Value), 0, 10);
         }
 
         private static DraftConfig BuildConfig() => new DraftConfig
@@ -965,6 +952,8 @@ namespace DraftModeTOUM.Managers
             MaxImpostors       = MaxImpostors,
             MaxNeutralKillings = MaxNeutralKillings,
             MaxNeutralPassives = MaxNeutralPassives,
+            MaxCrewKillings    = MaxCrewKillings,
+            MaxCrewPowers      = MaxCrewPowers,
             UseRoleChances     = UseRoleChances,
             CrewmateRoleId     = (ushort)RoleTypes.Crewmate,
             EvilOfferChance    = 0.5,
@@ -972,8 +961,8 @@ namespace DraftModeTOUM.Managers
             OfferDiversity     = true,
             FloorSpreadBias    = 1.0,
             ImpostorSpreadPower = 1.5,
-            PositionEdge       = 0.25,  // slight early-slot edge: earlier picks favoured, but early can still whiff to all-crew and late slots keep a real shot
-        };
+            PositionEdge       = 0.25
+        }; 
 
         private static RoleFaction GetFaction(ushort id)
         {

@@ -20,7 +20,7 @@ namespace DraftModeTOUM
         public static DraftScreenController Instance { get; private set; }
 
         public const int RerollCardIndex = -42;
-        private int _rerollsLeft;
+
 
         private sealed class DraftCardIdleCache
         {
@@ -37,7 +37,7 @@ namespace DraftModeTOUM
         private TextMeshPro _timerText;
         private GameObject _tooltipRoot;
         private TextMeshPro _tooltipText;
-        private const string PickPrompt = "<color=#FFFFFF><b>Pick Your Role!</b></color>";
+        private const string PickPrompt = "<color=#FFFFFF><size=160%><b>Pick Your Role!</b></size></color>";
         private GameObject _timerRoot;
         private GameObject _timerTrack;
         private GameObject _timerFill;
@@ -168,14 +168,21 @@ namespace DraftModeTOUM
             string desc = string.IsNullOrWhiteSpace(description)
                 ? string.Empty
                 : $"\n<size=68%>{description}</size>";
+            string teamcolor = "#BBBBBB";
+            if(teamName.ToLowerInvariant().Contains("crewmate")) teamcolor= "#5BD7E4";
+            if(teamName.ToLowerInvariant().Contains("impostor")) teamcolor= "#FF5050";
+            if(teamName.ToLowerInvariant().Contains("neutral")) teamcolor= "#7c7c7c";
             _tooltipText.text =
-                $"<b><color=#{hex}>{roleName}</color></b>  <size=58%><color=#BBBBBB>{teamName}</color></size>{desc}";
+                $"<b><color=#{hex}>{roleName}</color></b>  <size=58%><color={teamcolor}>{teamName}</color></size>{desc}";
             _tooltipRoot.SetActive(true);
         }
 
         private void HideTooltip()
         {
-            if (_tooltipText != null) _tooltipText.text = PickPrompt;
+            if (_tooltipText != null) {
+                _tooltipText.text = PickPrompt;
+                _tooltipText.fontSize = 2f;
+            }
         }
 
         private void DestroyTooltip()
@@ -214,7 +221,7 @@ namespace DraftModeTOUM
             }
         }
 
-        public static void Show(ushort[] roleIds, int rerollsLeft = 0)
+        public static void Show(ushort[] roleIds)
         {
             Hide();
             if (HudManager.Instance?.FullScreen != null)
@@ -223,7 +230,6 @@ namespace DraftModeTOUM
             DontDestroyOnLoad(go);
             Instance = go.AddComponent<DraftScreenController>();
             Instance._offeredRoleIds = roleIds;
-            Instance._rerollsLeft = rerollsLeft;
             Instance.BuildScreen();
         }
 
@@ -324,7 +330,7 @@ namespace DraftModeTOUM
 
             var idList = new List<ushort>();
             if (_offeredRoleIds != null) idList.AddRange(_offeredRoleIds);
-            var cards = DraftUiManager.BuildCards(idList, _rerollsLeft);
+            var cards = DraftUiManager.BuildCards(idList);
 
             int totalCards = cards.Count;
             float cardScale = CardScaleForCount(totalCards);

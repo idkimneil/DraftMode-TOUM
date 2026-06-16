@@ -10,7 +10,7 @@ namespace DraftModeTOUM.Managers
             new(System.StringComparer.OrdinalIgnoreCase)
             {
                 "Arsonist", "Glitch", "Juggernaut", "Plaguebearer",
-                "Pestilence", "SoulCollector", "Vampire", "Werewolf", "SerialKiller",
+                "Pestilence", "SoulCollector", "Vampire", "Werewolf", "SerialKiller", "Frag"
             };
 
         private static readonly HashSet<string> NeutralOtherRoles =

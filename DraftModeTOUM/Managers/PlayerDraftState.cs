@@ -15,6 +15,5 @@ namespace DraftModeTOUM.Managers
         public RoleFaction? GuaranteedFaction { get; set; }
         public RoleFaction? FloorLock { get; set; }
         public int LockShare { get; set; } = int.MaxValue;
-        public int RerollsRemaining { get; set; }
     }
 }

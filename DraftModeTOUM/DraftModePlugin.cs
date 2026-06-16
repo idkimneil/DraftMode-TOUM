@@ -40,7 +40,7 @@ namespace DraftModeTOUM
             _harmony = new Harmony(PluginInfo.PLUGIN_GUID);
             _harmony.PatchAll();
 
-            Logger.LogInfo("DraftModeTOUM loaded successfully!");
+            Logger.LogInfo("Draft Mode loaded successfully!");
             ReactorCredits.Register<DraftModePlugin>(ReactorCredits.AlwaysShow);
         }
 
@@ -53,8 +53,8 @@ namespace DraftModeTOUM
         internal static class PluginInfo
         {
             public const string PLUGIN_GUID = "com.draftmodetoum.mod";
-            public const string PLUGIN_NAME = "DraftModeTOUM";
-            public const string PLUGIN_VERSION = "1.1.0";
+            public const string PLUGIN_NAME = "Draft Mode";
+            public const string PLUGIN_VERSION = "1.2.0";
         }
 
         [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnDisconnected))]

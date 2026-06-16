@@ -180,7 +180,7 @@ namespace DraftModeTOUM.Patches
             reader.ReadByte();  // pickerId
             int roleCount = reader.ReadInt32();
             for (int i = 0; i < roleCount; i++) reader.ReadUInt16();
-            reader.ReadByte();  // rerollsLeft
+            reader.ReadByte();  // 
         }
 
         private static void HandleStartDraft(MessageReader reader)
@@ -202,22 +202,21 @@ namespace DraftModeTOUM.Patches
             int    roleCount  = reader.ReadInt32();
             var    roleIds    = new ushort[roleCount];
             for (int i = 0; i < roleCount; i++) roleIds[i] = reader.ReadUInt16();
-            int    rerollsLeft = reader.ReadByte();
 
             DraftModePlugin.Logger.LogInfo(
                 $"[DraftRpcPatch] Received turn announcement for player {pickerId}, " +
                 $"roles: {string.Join(",", roleIds.Select(r => ((RoleTypes)r).ToString()))}");
 
             DraftManager.SetClientTurn(turnNumber, slot);
-            DisplayTurnAnnouncement(slot, pickerId, roleIds, rerollsLeft);
+            DisplayTurnAnnouncement(slot, pickerId, roleIds);
         }
 
-        public static void HandleAnnounceTurnLocal(int slot, byte pickerId, List<ushort> roleIds, int rerollsLeft)
+        public static void HandleAnnounceTurnLocal(int slot, byte pickerId, List<ushort> roleIds)
         {
-            DisplayTurnAnnouncement(slot, pickerId, roleIds.ToArray(), rerollsLeft);
+            DisplayTurnAnnouncement(slot, pickerId, roleIds.ToArray());
         }
 
-        private static void DisplayTurnAnnouncement(int slot, byte pickerId, ushort[] roleIds, int rerollsLeft)
+        private static void DisplayTurnAnnouncement(int slot, byte pickerId, ushort[] roleIds)
         {
             byte localId = PlayerControl.LocalPlayer.PlayerId;
             if (localId == pickerId)
@@ -225,7 +224,7 @@ namespace DraftModeTOUM.Patches
                 DraftModePlugin.Logger.LogInfo(
                     $"[DraftRpcPatch] Showing picker for local player with roles: " +
                     $"{string.Join(",", roleIds.Select(r => ((RoleTypes)r).ToString()))}");
-                DraftUiManager.ShowPicker(roleIds.ToList(), rerollsLeft);
+                DraftUiManager.ShowPicker(roleIds.ToList());
 
                 var localSettings = MiraAPI.LocalSettings.LocalSettingsTabSingleton<DraftModeLocalSettings>.Instance;
                 if (localSettings.AudioCueTiming.Value == AudioTiming.TurnStart)
@@ -300,12 +299,12 @@ namespace DraftModeTOUM.Patches
             AmongUsClient.Instance.FinishRpcImmediately(writer);
         }
 
-        public static void SendTurnAnnouncement(int slot, byte playerId, List<ushort> roleIds, int turnNumber, int rerollsLeft)
+        public static void SendTurnAnnouncement(int slot, byte playerId, List<ushort> roleIds, int turnNumber)
         {
             DraftModePlugin.Logger.LogInfo(
                 $"[DraftRpcPatch] Sending turn announcement to player {playerId}, " +
                 $"roles: {string.Join(",", roleIds.Select(r => ((RoleTypes)r).ToString()))}");
-            DraftRpcPatch.HandleAnnounceTurnLocal(slot, playerId, roleIds, rerollsLeft);
+            DraftRpcPatch.HandleAnnounceTurnLocal(slot, playerId, roleIds);
 
             var writer = AmongUsClient.Instance.StartRpcImmediately(
                 PlayerControl.LocalPlayer.NetId,
@@ -316,7 +315,6 @@ namespace DraftModeTOUM.Patches
             writer.Write(playerId);
             writer.Write(roleIds.Count);
             foreach (var id in roleIds) writer.Write(id);
-            writer.Write((byte)Mathf.Clamp(rerollsLeft, 0, 255));
             AmongUsClient.Instance.FinishRpcImmediately(writer);
         }
 

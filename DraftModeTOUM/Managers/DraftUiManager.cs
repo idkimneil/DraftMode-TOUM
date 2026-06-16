@@ -13,11 +13,11 @@ namespace DraftModeTOUM.Managers
 {
     public static class DraftUiManager
     {
-        public static void ShowPicker(List<ushort> roleIds, int rerollsLeft = 0)
+        public static void ShowPicker(List<ushort> roleIds)
         {
             if (HudManager.Instance == null || roleIds == null || roleIds.Count == 0) return;
             DraftStatusOverlay.SetState(OverlayState.BackgroundOnly);
-            DraftScreenController.Show(roleIds.ToArray(), rerollsLeft);
+            DraftScreenController.Show(roleIds.ToArray());
         }
 
         public static void RefreshTurnList()
@@ -33,7 +33,7 @@ namespace DraftModeTOUM.Managers
                 DraftStatusOverlay.SetState(OverlayState.Waiting);
         }
 
-        public static List<DraftRoleCard> BuildCards(List<ushort> roleIds, int rerollsLeft = 0)
+        public static List<DraftRoleCard> BuildCards(List<ushort> roleIds)
         {
             var cards = new List<DraftRoleCard>();
             for (int i = 0; i < roleIds.Count; i++)
@@ -55,15 +55,6 @@ namespace DraftModeTOUM.Managers
                     TouRoleIcons.RandomAny.LoadAsset(),
                     Color.white,
                     roleIds.Count, 0, "Locks in a completely random role for you."));
-
-            if (rerollsLeft > 0)
-                cards.Add(new DraftRoleCard(
-                    "Reroll", $"{rerollsLeft} left",
-                    TouRoleIcons.RandomAny.LoadAsset(),
-                    new Color(1f, 0.82f, 0.12f),
-                    DraftScreenController.RerollCardIndex, 0,
-                    "Discard these cards and draw a fresh set. Limited uses."));
-
             return cards;
         }
 

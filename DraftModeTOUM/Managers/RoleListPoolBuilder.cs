@@ -18,6 +18,7 @@ namespace DraftModeTOUM.Managers
         public ushort? ConcreteRoleId { get; set; }
         public RoleFaction? FactionConstraint { get; set; }
         public bool IsAny { get; set; }
+        public bool IsNonImp { get; set; }
         public RoleListCategory Category { get; set; } = RoleListCategory.None;
 
         public RoleListSlotEntry(int slotIndex)
@@ -35,12 +36,22 @@ namespace DraftModeTOUM.Managers
         CrewSupport,
         CrewKilling,
         CrewPower,
-        CrewSpecial,
-        ImpCommon,
-        ImpSpecial,
-        NeutralKilling,
-        NeutralPassive,
+        CrewSpecial,       // Killing + Power
+        ImpCommon,         // Concealing + Support
+        ImpSpecial,        // Killing + Power
+        ImpConceal,
+        ImpKilling,
+        ImpPower,
+        ImpSupport,
+        NeutBenign,
+        NeutEvil,
+        NeutKilling,
+        NeutOutlier,
+        NeutCommon,        // Benign + Evil
+        NeutSpecial,       // Killing + Outlier
+        NeutWildcard,      // Benign + Evil + Outlier
     }
+
     public static class RoleListPoolBuilder
     {
         public static DraftRolePool BuildFromRoleList(int playerCount)
@@ -53,7 +64,7 @@ namespace DraftModeTOUM.Managers
                 if (roleOptions == null)
                 {
                     DraftModePlugin.Logger.LogWarning("[RoleListPoolBuilder] RoleOptions not available.");
-                    return RolePoolBuilder.BuildPool(); // fallback
+                    return RolePoolBuilder.BuildPool();
                 }
 
                 var slotValues = GetAllSlotValues(roleOptions);
@@ -72,16 +83,17 @@ namespace DraftModeTOUM.Managers
 
                 for (int i = slotValues.Count; i < playerCount; i++)
                 {
-                    var fallback = new RoleListSlotEntry(i + 1)
+                    entries.Add(new RoleListSlotEntry(i + 1)
                     {
-                        FactionConstraint = null,
-                        IsAny = false,
+                        FactionConstraint = RoleFaction.Crewmate,
+                        IsAny  = false,
+                        IsNonImp = false,
                         Category = RoleListCategory.None,
-                    };
-                    entries.Add(fallback);
+                    });
                     DraftModePlugin.Logger.LogInfo(
-                        $"[RoleListPoolBuilder] Slot {i + 1} beyond role list cap — using non-impostor fallback.");
+                        $"[RoleListPoolBuilder] Slot {i + 1} beyond role list cap — Crewmate fallback.");
                 }
+
                 PopulatePool(pool, entries, playerCount);
             }
             catch (Exception ex)
@@ -123,157 +135,116 @@ namespace DraftModeTOUM.Managers
                 roleOptions.Slot15.Value,
             };
         }
+
         private static RoleListSlotEntry ResolveSlot(int slotIndex, RoleListOption option)
         {
-            var entry = new RoleListSlotEntry(slotIndex);
+            var e = new RoleListSlotEntry(slotIndex);
 
             switch (option)
             {
                 case RoleListOption.Any:
-                    entry.IsAny = true;
-                    entry.Category = RoleListCategory.None;
+                    e.IsAny = true;
                     break;
+
                 case RoleListOption.NonImp:
-                    entry.FactionConstraint = null;
-                    entry.Category = RoleListCategory.None;
+                    e.IsNonImp = true;
                     break;
+
                 case RoleListOption.CrewRandom:
-                    entry.FactionConstraint = RoleFaction.Crewmate;
-                    entry.Category = RoleListCategory.None;
+                    e.FactionConstraint = RoleFaction.Crewmate;
                     break;
                 case RoleListOption.CrewCommon:
-                    entry.FactionConstraint = RoleFaction.Crewmate;
-                    entry.Category = RoleListCategory.CrewCommon;
+                    e.FactionConstraint = RoleFaction.Crewmate;
+                    e.Category = RoleListCategory.CrewCommon;
                     break;
                 case RoleListOption.CrewInvest:
-                    entry.FactionConstraint = RoleFaction.Crewmate;
-                    entry.Category = RoleListCategory.CrewInvest;
+                    e.FactionConstraint = RoleFaction.Crewmate;
+                    e.Category = RoleListCategory.CrewInvest;
                     break;
                 case RoleListOption.CrewProtective:
-                    entry.FactionConstraint = RoleFaction.Crewmate;
-                    entry.Category = RoleListCategory.CrewProtective;
+                    e.FactionConstraint = RoleFaction.Crewmate;
+                    e.Category = RoleListCategory.CrewProtective;
                     break;
                 case RoleListOption.CrewSupport:
-                    entry.FactionConstraint = RoleFaction.Crewmate;
-                    entry.Category = RoleListCategory.CrewSupport;
+                    e.FactionConstraint = RoleFaction.Crewmate;
+                    e.Category = RoleListCategory.CrewSupport;
                     break;
                 case RoleListOption.CrewKilling:
-                    entry.FactionConstraint = RoleFaction.Crewmate;
-                    entry.Category = RoleListCategory.CrewKilling;
+                    e.FactionConstraint = RoleFaction.Crewmate;
+                    e.Category = RoleListCategory.CrewKilling;
                     break;
                 case RoleListOption.CrewPower:
-                    entry.FactionConstraint = RoleFaction.Crewmate;
-                    entry.Category = RoleListCategory.CrewPower;
+                    e.FactionConstraint = RoleFaction.Crewmate;
+                    e.Category = RoleListCategory.CrewPower;
                     break;
                 case RoleListOption.CrewSpecial:
-                    entry.FactionConstraint = RoleFaction.Crewmate;
-                    entry.Category = RoleListCategory.CrewSpecial;
+                    e.FactionConstraint = RoleFaction.Crewmate;
+                    e.Category = RoleListCategory.CrewSpecial;
                     break;
+
                 case RoleListOption.ImpRandom:
-                    entry.FactionConstraint = RoleFaction.Impostor;
-                    entry.Category = RoleListCategory.None;
+                    e.FactionConstraint = RoleFaction.Impostor;
                     break;
                 case RoleListOption.ImpCommon:
-                    entry.FactionConstraint = RoleFaction.Impostor;
-                    entry.Category = RoleListCategory.ImpCommon;
+                    e.FactionConstraint = RoleFaction.Impostor;
+                    e.Category = RoleListCategory.ImpCommon;
                     break;
                 case RoleListOption.ImpSpecial:
-                    entry.FactionConstraint = RoleFaction.Impostor;
-                    entry.Category = RoleListCategory.ImpSpecial;
+                    e.FactionConstraint = RoleFaction.Impostor;
+                    e.Category = RoleListCategory.ImpSpecial;
+                    break;
+                case RoleListOption.ImpConceal:
+                    e.FactionConstraint = RoleFaction.Impostor;
+                    e.Category = RoleListCategory.ImpConceal;
+                    break;
+                case RoleListOption.ImpKilling:
+                    e.FactionConstraint = RoleFaction.Impostor;
+                    e.Category = RoleListCategory.ImpKilling;
+                    break;
+                case RoleListOption.ImpPower:
+                    e.FactionConstraint = RoleFaction.Impostor;
+                    e.Category = RoleListCategory.ImpPower;
+                    break;
+                case RoleListOption.ImpSupport:
+                    e.FactionConstraint = RoleFaction.Impostor;
+                    e.Category = RoleListCategory.ImpSupport;
+                    break;
+                case RoleListOption.NeutRandom:
+                    break;
+                case RoleListOption.NeutBenign:
+                    e.Category = RoleListCategory.NeutBenign;
+                    break;
+                case RoleListOption.NeutEvil:
+                    e.Category = RoleListCategory.NeutEvil;
+                    break;
+                case RoleListOption.NeutKilling:
+                    e.FactionConstraint = RoleFaction.NeutralKilling;
+                    e.Category = RoleListCategory.NeutKilling;
+                    break;
+                case RoleListOption.NeutOutlier:
+                    e.Category = RoleListCategory.NeutOutlier;
+                    break;
+                case RoleListOption.NeutCommon:
+                    e.Category = RoleListCategory.NeutCommon;
+                    break;
+                case RoleListOption.NeutSpecial:
+                    e.Category = RoleListCategory.NeutSpecial;
+                    break;
+                case RoleListOption.NeutWildcard:
+                    e.Category = RoleListCategory.NeutWildcard;
                     break;
 
                 default:
-                    entry.IsAny = true;
+                    e.IsAny = true;
                     DraftModePlugin.Logger.LogWarning(
                         $"[RoleListPoolBuilder] Unknown RoleListOption '{option}' on slot {slotIndex} — treating as Any.");
                     break;
             }
 
-            return entry;
-        }
-        private static void PopulatePool(DraftRolePool pool, List<RoleListSlotEntry> entries, int playerCount)
-        {
-            var allRoles = GatherEnabledRoles(playerCount);
-            var factionNeeds = CountFactionNeeds(entries);
-
-            foreach (var role in allRoles)
-            {
-                if (role == null) continue;
-
-                var faction = GetFaction(role);
-                var roleId  = (ushort)role.Role;
-                int maxCount = ComputeMaxCount(role, faction, entries, factionNeeds, playerCount);
-                if (maxCount <= 0) continue;
-                int weight = GetWeight(role);
-                AddOrUpdateRole(pool, roleId, maxCount, weight, faction, GetAlignment(role));
-            }
-            if (!pool.RoleIds.Contains((ushort)RoleTypes.Crewmate))
-            {
-                AddOrUpdateRole(pool, (ushort)RoleTypes.Crewmate, playerCount, 1, RoleFaction.Crewmate);
-            }
+            return e;
         }
 
-        private static int ComputeMaxCount(
-            RoleBehaviour role,
-            RoleFaction faction,
-            List<RoleListSlotEntry> entries,
-            Dictionary<RoleFaction?, int> factionNeeds,
-            int playerCount)
-        {
-            var roleId = (ushort)role.Role;
-            int explicitSlots = entries.Count(e =>
-                e.ConcreteRoleId.HasValue && e.ConcreteRoleId.Value == roleId);
-            int constraintSlots = entries.Count(e =>
-                !e.ConcreteRoleId.HasValue && SlotAcceptsRole(e, role, faction));
-            int total = explicitSlots + constraintSlots;
-            if (factionNeeds.TryGetValue(faction, out int factionCap))
-                total = Mathf.Min(total, factionCap);
-            return Mathf.Min(total, playerCount);
-        }
-
-        private static bool SlotAcceptsRole(RoleListSlotEntry entry, RoleBehaviour role, RoleFaction faction)
-        {
-            if (entry.IsAny) return true;
-            if (!entry.FactionConstraint.HasValue)
-                return faction == RoleFaction.Crewmate || faction == RoleFaction.Neutral;
-
-            if (entry.FactionConstraint.Value != faction) return false;
-            if (entry.Category == RoleListCategory.None) return true;
-
-            return CategoryMatchesRole(entry.Category, role);
-        }
-
-        private static bool CategoryMatchesRole(RoleListCategory category, RoleBehaviour role)
-        {
-            string alignment = string.Empty;
-            try { alignment = MiscUtils.GetParsedRoleAlignment(role) ?? string.Empty; }
-            catch { }
-
-            string lower = alignment.ToLowerInvariant();
-
-            return category switch
-            {
-                RoleListCategory.CrewInvest     => lower.Contains("invest"),
-                RoleListCategory.CrewProtective => lower.Contains("protect"),
-                RoleListCategory.CrewSupport    => lower.Contains("support"),
-                RoleListCategory.CrewKilling    => lower.Contains("killing"),
-                RoleListCategory.CrewPower      => lower.Contains("power"),
-                _ => true,
-            };
-        }
-
-        private static Dictionary<RoleFaction?, int> CountFactionNeeds(List<RoleListSlotEntry> entries)
-        {
-            var dict = new Dictionary<RoleFaction?, int>();
-            foreach (var e in entries)
-            {
-                var key = e.IsAny ? (RoleFaction?)null : e.FactionConstraint;
-                dict[key] = dict.TryGetValue(key, out int c) ? c + 1 : 1;
-            }
-            return dict;
-        }
-
-        private static List<RoleBehaviour> GatherEnabledRoles(int playerCount)
+        private static List<RoleBehaviour> GatherAllEligibleRoles()
         {
             var result = new List<RoleBehaviour>();
 
@@ -291,21 +262,131 @@ namespace DraftModeTOUM.Managers
                 result.Add(role);
             }
 
-            // Always include plain Crewmate
             if (RoleManager.Instance != null)
             {
                 var crew = RoleManager.Instance.GetRole(RoleTypes.Crewmate);
-                if (crew != null && !result.Any(r => r.Role == RoleTypes.Crewmate))
+                if (crew != null && result.All(r => r.Role != RoleTypes.Crewmate))
                     result.Add(crew);
             }
 
             return result;
         }
 
+        private static void PopulatePool(DraftRolePool pool, List<RoleListSlotEntry> entries, int playerCount)
+        {
+            var allRoles = GatherAllEligibleRoles();
+
+            foreach (var role in allRoles)
+            {
+                if (role == null) continue;
+
+                var   faction = GetFaction(role);
+                var   roleId  = (ushort)role.Role;
+                int maxCount = ComputeMaxCount(role, faction, entries, playerCount);
+                if (maxCount <= 0) continue;
+                int weight = GetWeightHint(role);
+
+                AddOrUpdateRole(pool, roleId, maxCount, weight, faction, GetAlignment(role));
+            }
+
+            if (!pool.RoleIds.Contains((ushort)RoleTypes.Crewmate))
+                AddOrUpdateRole(pool, (ushort)RoleTypes.Crewmate, playerCount, 1, RoleFaction.Crewmate);
+        }
+        private static int ComputeMaxCount(
+            RoleBehaviour role,
+            RoleFaction faction,
+            List<RoleListSlotEntry> entries,
+            int playerCount)
+        {
+            int count = 0;
+            foreach (var e in entries)
+                if (SlotAcceptsRole(e, role, faction))
+                    count++;
+            return Mathf.Min(count, playerCount);
+        }
+
+        private static bool SlotAcceptsRole(RoleListSlotEntry entry, RoleBehaviour role, RoleFaction faction)
+        {
+            // Any: no restriction
+            if (entry.IsAny) return true;
+
+            // NonImp: Crewmate or any Neutral
+            if (entry.IsNonImp)
+                return faction == RoleFaction.Crewmate
+                    || faction == RoleFaction.Neutral
+                    || faction == RoleFaction.NeutralKilling;
+
+            // NeutRandom
+            if (!entry.FactionConstraint.HasValue && entry.Category == RoleListCategory.None)
+                return faction == RoleFaction.Neutral || faction == RoleFaction.NeutralKilling;
+
+            if (entry.FactionConstraint.HasValue)
+            {
+                if (entry.FactionConstraint.Value != faction) return false;
+                return entry.Category == RoleListCategory.None
+                    || CategoryMatchesRole(entry.Category, role, faction);
+            }
+            if (IsNeutralCategory(entry.Category))
+            {
+                if (faction != RoleFaction.Neutral && faction != RoleFaction.NeutralKilling)
+                    return false;
+                return CategoryMatchesRole(entry.Category, role, faction);
+            }
+
+            return false;
+        }
+
+        private static bool IsNeutralCategory(RoleListCategory cat) => cat is
+            RoleListCategory.NeutBenign  or RoleListCategory.NeutEvil    or
+            RoleListCategory.NeutKilling or RoleListCategory.NeutOutlier or
+            RoleListCategory.NeutCommon  or RoleListCategory.NeutSpecial  or
+            RoleListCategory.NeutWildcard;
+
+        private static bool CategoryMatchesRole(RoleListCategory category, RoleBehaviour role, RoleFaction faction)
+        {
+            string alignment = string.Empty;
+            try { alignment = MiscUtils.GetParsedRoleAlignment(role) ?? string.Empty; }
+            catch { }
+            string lower = alignment.ToLowerInvariant();
+
+            return category switch
+            {
+                RoleListCategory.CrewInvest     => lower.Contains("invest"),
+                RoleListCategory.CrewProtective => lower.Contains("protect"),
+                RoleListCategory.CrewSupport    => lower.Contains("support"),
+                RoleListCategory.CrewKilling    => lower.Contains("killing"),
+                RoleListCategory.CrewPower      => lower.Contains("power"),
+                RoleListCategory.CrewCommon     => lower.Contains("invest") || lower.Contains("protect") || lower.Contains("support"),
+                RoleListCategory.CrewSpecial    => lower.Contains("killing") || lower.Contains("power"),
+
+                RoleListCategory.ImpConceal  => lower.Contains("conceal"),
+                RoleListCategory.ImpKilling  => lower.Contains("killing"),
+                RoleListCategory.ImpPower    => lower.Contains("power"),
+                RoleListCategory.ImpSupport  => lower.Contains("support"),
+                RoleListCategory.ImpCommon   => lower.Contains("conceal") || lower.Contains("support"),
+                RoleListCategory.ImpSpecial  => lower.Contains("killing") || lower.Contains("power"),
+
+                RoleListCategory.NeutKilling  => faction == RoleFaction.NeutralKilling,
+                RoleListCategory.NeutBenign   => faction == RoleFaction.Neutral && (lower.Contains("benign") || lower.Contains("passive")),
+                RoleListCategory.NeutEvil     => faction == RoleFaction.Neutral && lower.Contains("evil"),
+                RoleListCategory.NeutOutlier  => faction == RoleFaction.Neutral && lower.Contains("outlier"),
+                RoleListCategory.NeutCommon   => faction == RoleFaction.Neutral
+                                                 && (lower.Contains("benign") || lower.Contains("passive") || lower.Contains("evil")),
+                RoleListCategory.NeutSpecial  => faction == RoleFaction.NeutralKilling
+                                                 || (faction == RoleFaction.Neutral && lower.Contains("outlier")),
+                RoleListCategory.NeutWildcard => faction == RoleFaction.Neutral
+                                                 && (lower.Contains("benign") || lower.Contains("passive")
+                                                     || lower.Contains("evil") || lower.Contains("outlier")),
+
+                _ => true,
+            };
+        }
+
+
         private static RoleFaction GetFaction(RoleBehaviour role) =>
             RoleCategory.GetFactionFromRole(role);
 
-        private static int GetWeight(RoleBehaviour role)
+        private static int GetWeightHint(RoleBehaviour role)
         {
             try
             {
@@ -313,7 +394,7 @@ namespace DraftModeTOUM.Managers
                 if (roleOptions != null)
                 {
                     int chance = roleOptions.GetChancePerGame(role.Role);
-                    return Mathf.Max(1, chance);
+                    if (chance > 0) return chance;
                 }
             }
             catch { }
@@ -326,14 +407,15 @@ namespace DraftModeTOUM.Managers
             catch { return string.Empty; }
         }
 
-        private static void AddOrUpdateRole(DraftRolePool pool, ushort roleId, int maxCount, int weight, RoleFaction faction, string alignment = "")
+        private static void AddOrUpdateRole(DraftRolePool pool, ushort roleId, int maxCount, int weight,
+                                            RoleFaction faction, string alignment = "")
         {
             if (!pool.MaxCounts.ContainsKey(roleId))
             {
                 pool.RoleIds.Add(roleId);
-                pool.MaxCounts[roleId] = Math.Max(1, maxCount);
-                pool.Weights[roleId]   = Math.Max(1, weight);
-                pool.Factions[roleId]  = faction;
+                pool.MaxCounts[roleId]  = Math.Max(1, maxCount);
+                pool.Weights[roleId]    = Math.Max(1, weight);
+                pool.Factions[roleId]   = faction;
                 pool.Alignments[roleId] = alignment ?? string.Empty;
             }
             else
