@@ -4,14 +4,6 @@ using System.Linq;
 
 namespace DraftModeTOUM.Managers
 {
-    public enum RoleFaction
-    {
-        Crewmate,
-        Impostor,
-        Neutral,
-        NeutralKilling
-    }
-
     public static class RoleCategory
     {
         private static readonly HashSet<string> NeutralKillingRoles =

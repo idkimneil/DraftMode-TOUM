@@ -8,15 +8,6 @@ using TownOfUs.Utilities;
 
 namespace DraftModeTOUM.Managers
 {
-    public sealed class DraftRolePool
-    {
-        
-        public List<ushort>                    RoleIds    { get; } = new();
-        public Dictionary<ushort, int>         MaxCounts  { get; } = new();
-        public Dictionary<ushort, int>         Weights    { get; } = new();
-        public Dictionary<ushort, RoleFaction> Factions   { get; } = new();
-    }
-
     public static class RolePoolBuilder
     {
         public static DraftRolePool BuildPool()
@@ -99,7 +90,7 @@ namespace DraftModeTOUM.Managers
                         ? RoleCategory.GetFactionFromRole(role)
                         : RoleFaction.Crewmate);
 
-                AddRole(pool, (ushort)role.Role, cappedCount, chance, faction);
+                AddRole(pool, (ushort)role.Role, cappedCount, chance, faction, GetAlignment(role));
             }
         }
 
@@ -111,7 +102,13 @@ namespace DraftModeTOUM.Managers
 
         public static bool IsBannedRole(string niceName) => _bannedRoles.Contains(niceName);
 
-        private static void AddRole(DraftRolePool pool, ushort roleId, int maxCount, int weight, RoleFaction faction)
+        private static string GetAlignment(RoleBehaviour role)
+        {
+            try { return MiscUtils.GetParsedRoleAlignment(role) ?? string.Empty; }
+            catch { return string.Empty; }
+        }
+
+        private static void AddRole(DraftRolePool pool, ushort roleId, int maxCount, int weight, RoleFaction faction, string alignment = "")
         {
             if (!pool.MaxCounts.ContainsKey(roleId))
             {
@@ -119,6 +116,7 @@ namespace DraftModeTOUM.Managers
                 pool.MaxCounts[roleId] = Math.Max(1, maxCount);
                 pool.Weights[roleId]   = Math.Max(1, weight);
                 pool.Factions[roleId]  = faction;
+                pool.Alignments[roleId] = alignment ?? string.Empty;
             }
             else
             {
@@ -140,7 +138,7 @@ namespace DraftModeTOUM.Managers
                     ? RoleFaction.Impostor
                     : ((role is MiraAPI.Roles.ICustomRole cr__ && cr__.Team != ModdedRoleTeams.Crewmate && cr__.Team != ModdedRoleTeams.Impostor) ? RoleCategory.GetFactionFromRole(role) : RoleFaction.Crewmate);
 
-                AddRole(pool, (ushort)role.Role, 1, 100, faction);
+                AddRole(pool, (ushort)role.Role, 1, 100, faction, GetAlignment(role));
             }
         }
     }

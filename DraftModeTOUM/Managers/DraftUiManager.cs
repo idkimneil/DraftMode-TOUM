@@ -13,11 +13,11 @@ namespace DraftModeTOUM.Managers
 {
     public static class DraftUiManager
     {
-        public static void ShowPicker(List<ushort> roleIds)
+        public static void ShowPicker(List<ushort> roleIds, int rerollsLeft = 0)
         {
             if (HudManager.Instance == null || roleIds == null || roleIds.Count == 0) return;
             DraftStatusOverlay.SetState(OverlayState.BackgroundOnly);
-            DraftScreenController.Show(roleIds.ToArray());
+            DraftScreenController.Show(roleIds.ToArray(), rerollsLeft);
         }
 
         public static void RefreshTurnList()
@@ -33,7 +33,7 @@ namespace DraftModeTOUM.Managers
                 DraftStatusOverlay.SetState(OverlayState.Waiting);
         }
 
-        public static List<DraftRoleCard> BuildCards(List<ushort> roleIds)
+        public static List<DraftRoleCard> BuildCards(List<ushort> roleIds, int rerollsLeft = 0)
         {
             var cards = new List<DraftRoleCard>();
             for (int i = 0; i < roleIds.Count; i++)
@@ -46,7 +46,7 @@ namespace DraftModeTOUM.Managers
                 Sprite icon        = GetRoleIcon(role);
                 Color  color       = GetRoleColor(role);
 
-                cards.Add(new DraftRoleCard(displayName, team, icon, color, i));
+                cards.Add(new DraftRoleCard(displayName, team, icon, color, i, id, GetRoleDescription(role)));
             }
 
             if (DraftManager.ShowRandomOption)
@@ -54,9 +54,29 @@ namespace DraftModeTOUM.Managers
                     "Random", "Random",
                     TouRoleIcons.RandomAny.LoadAsset(),
                     Color.white,
-                    roleIds.Count));
+                    roleIds.Count, 0, "Locks in a completely random role for you."));
+
+            if (rerollsLeft > 0)
+                cards.Add(new DraftRoleCard(
+                    "Reroll", $"{rerollsLeft} left",
+                    TouRoleIcons.RandomAny.LoadAsset(),
+                    new Color(1f, 0.82f, 0.12f),
+                    DraftScreenController.RerollCardIndex, 0,
+                    "Discard these cards and draw a fresh set. Limited uses."));
 
             return cards;
+        }
+
+        public static string GetRoleDescription(RoleBehaviour role)
+        {
+            if (role == null) return string.Empty;
+            try
+            {
+                string s = role.BlurbLong;
+                if (string.IsNullOrWhiteSpace(s)) s = role.Blurb;
+                return s ?? string.Empty;
+            }
+            catch { return string.Empty; }
         }
 
         public static RoleBehaviour ResolveRole(ushort roleId)  // removed ?

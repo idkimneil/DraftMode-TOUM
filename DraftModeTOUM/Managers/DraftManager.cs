@@ -17,19 +17,6 @@ using TownOfUs.Assets;
 
 namespace DraftModeTOUM.Managers
 {
-    public class PlayerDraftState
-    {
-        public byte         PlayerId       { get; set; }
-        public int          SlotNumber     { get; set; }
-        public ushort?      ChosenRoleId   { get; set; }
-        public bool         HasPicked      { get; set; }
-        public bool         IsPickingNow   { get; set; }
-        public bool         IsDisconnected { get; set; }
-        public List<ushort> OfferedRoleIds { get; set; } = new();
-
-        public RoleFaction? GuaranteedFaction { get; set; }
-    }
-
     public static class DraftManager
     {
         public static bool  IsDraftActive   { get; private set; }
@@ -45,14 +32,11 @@ namespace DraftModeTOUM.Managers
         public static int  OfferedRolesCount     { get; set; } = 3;
         public static bool ShowRandomOption      { get; set; } = true;
         public static int  ConcurrentPickCount   { get; set; } = 1;
+        public static int  RerollsPerPlayer      { get; set; } = 1;
 
         public static int MaxImpostors       { get; set; } = 2;
         public static int MaxNeutralKillings { get; set; } = 2;
         public static int MaxNeutralPassives { get; set; } = 3;
-
-        private static int _impostorsDrafted       = 0;
-        private static int _neutralKillingsDrafted = 0;
-        private static int _neutralPassivesDrafted = 0;
 
         internal static bool SkipCountdown { get; private set; } = false;
 
@@ -60,7 +44,7 @@ namespace DraftModeTOUM.Managers
         private static Dictionary<int, PlayerDraftState> _slotMap       = new();
         private static Dictionary<byte, int>             _pidToSlot     = new();
         private static DraftRolePool                     _pool          = new();
-        private static Dictionary<ushort, int>           _draftedCounts = new();
+        private static DraftDistribution                 _engine;
 
         private static int _turnIndex = 0;
         private static List<int> _activeSlots = new();
@@ -68,7 +52,7 @@ namespace DraftModeTOUM.Managers
         private static readonly HashSet<ushort> _roundChosenRoles   = new();
         private static readonly HashSet<byte>   _roundReadyPickers  = new();
         private static bool _suppressAdvance = false;
-        private static readonly Dictionary<int, HashSet<RoleFaction>> _roundAllowedFactions = new();
+        private static FactionBudget _roundBudget;
 
         public static readonly Dictionary<byte, RoleTypes> PendingRoleAssignments = new();
         private static readonly HashSet<byte>              _appliedPlayers        = new();
@@ -180,7 +164,7 @@ namespace DraftModeTOUM.Managers
             IsDraftActive = true;
             for (int i = 0; i < playerIds.Count; i++)
             {
-                var state = new PlayerDraftState { PlayerId = playerIds[i], SlotNumber = slotNumbers[i] };
+                var state = new PlayerDraftState { PlayerId = playerIds[i], SlotNumber = slotNumbers[i], RerollsRemaining = RerollsPerPlayer };
                 _slotMap[slotNumbers[i]]  = state;
                 _pidToSlot[playerIds[i]] = slotNumbers[i];
             }
@@ -250,6 +234,8 @@ namespace DraftModeTOUM.Managers
             if (_pool.RoleIds.Count == 0) return;
             // ─────────────────────────────────────────────────────────────────
 
+            _engine = new DraftDistribution(_pool, BuildConfig(), new UnityRng());
+
             int totalSlots    = players.Count;
             var shuffledSlots = Enumerable.Range(1, totalSlots).OrderBy(_ => UnityEngine.Random.value).ToList();
 
@@ -260,7 +246,7 @@ namespace DraftModeTOUM.Managers
             {
                 int  slot = shuffledSlots[i];
                 byte pid  = players[i].PlayerId;
-                _slotMap[slot]  = new PlayerDraftState { PlayerId = pid, SlotNumber = slot };
+                _slotMap[slot]  = new PlayerDraftState { PlayerId = pid, SlotNumber = slot, RerollsRemaining = RerollsPerPlayer };
                 _pidToSlot[pid] = slot;
                 syncPids.Add(pid);
                 syncSlots.Add(slot);
@@ -430,17 +416,14 @@ namespace DraftModeTOUM.Managers
             _slotMap.Clear();
             _pidToSlot.Clear();
             _pool = new DraftRolePool();
-            _draftedCounts.Clear();
+            _engine = null;
+            _roundBudget = null;
             TurnOrder.Clear();
             _turnIndex = 0;
             _activeSlots.Clear();
             _roundOfferReserved.Clear();
             _roundChosenRoles.Clear();
             _roundReadyPickers.Clear();
-
-            _impostorsDrafted       = 0;
-            _neutralKillingsDrafted = 0;
-            _neutralPassivesDrafted = 0;
 
             _forcedRoleName     = null;
             _forcedRoleId       = null;
@@ -506,25 +489,6 @@ namespace DraftModeTOUM.Managers
             }
         }
 
-        private static List<ushort> GetAvailableIds(HashSet<ushort> exclude = null)
-        {
-            return _pool.RoleIds.Where(id =>
-            {
-                if (exclude != null && exclude.Contains(id)) return false;
-                if (GetDraftedCount(id) >= GetMaxCount(id)) return false;
-                var faction = GetFaction(id);
-                if (faction == RoleFaction.Impostor       && _impostorsDrafted      >= MaxImpostors)       return false;
-                if (faction == RoleFaction.NeutralKilling && _neutralKillingsDrafted >= MaxNeutralKillings) return false;
-                if (faction == RoleFaction.Neutral        && _neutralPassivesDrafted >= MaxNeutralPassives) return false;
-                return true;
-            }).ToList();
-        }
-
-        private static List<ushort> GetAvailableForFaction(RoleFaction faction)
-        {
-            return GetAvailableIds().Where(id => GetFaction(id) == faction).ToList();
-        }
-
         private static void StartRound()
         {
             if (!IsDraftActive) return;
@@ -546,7 +510,7 @@ namespace DraftModeTOUM.Managers
                 _roundChosenRoles.Add(_forcedRoleId.Value);
             }
 
-            BuildRoundFactionAllowList();
+            _roundBudget = _engine.CreateRoundBudget();
 
             if (_activeSlots.Count == 0)
             {
@@ -561,12 +525,43 @@ namespace DraftModeTOUM.Managers
             TurnTimeLeft     = TurnDuration;
             TurnTimerRunning = false;
 
-            var pending = new List<PlayerDraftState>();
-            _suppressAdvance = true;
+            // Just-in-time floor locks: constrain trailing offers to a faction when the players left can no
+            // longer satisfy the configured floors otherwise. Computed up front so DC auto-picks honor it too.
+            int playersRemaining = 0;
+            for (int i = _turnIndex; i < TurnOrder.Count; i++)
+            {
+                var s = GetStateForSlot(TurnOrder[i]);
+                if (s != null && !s.HasPicked) playersRemaining++;
+            }
+            var activeStates = new List<PlayerDraftState>();
             foreach (var slot in _activeSlots)
             {
-                var state = GetStateForSlot(slot);
-                if (state == null) continue;
+                var s = GetStateForSlot(slot);
+                if (s != null) activeStates.Add(s);
+            }
+            var locks = _engine.AssignFloorLocks(playersRemaining, activeStates.Count, TurnOrder.Count);
+            var lockOf = new Dictionary<PlayerDraftState, RoleFaction?>();
+            for (int i = 0; i < activeStates.Count; i++)
+            {
+                lockOf[activeStates[i]] = locks[i];
+                activeStates[i].FloorLock = locks[i];
+                activeStates[i].LockShare = int.MaxValue;
+                if (locks[i].HasValue) activeStates[i].GuaranteedFaction = locks[i];
+            }
+
+            foreach (var grp in activeStates.Where(s => s.FloorLock.HasValue).GroupBy(s => s.FloorLock.Value))
+            {
+                var peers = grp.ToList();
+                if (peers.Count <= 1) continue;
+                int avail = _engine.GetAvailableForFaction(grp.Key).Count(id => !_roundOfferReserved.Contains(id));
+                int share = Math.Max(1, (avail + peers.Count - 1) / peers.Count);
+                foreach (var s in peers) s.LockShare = share;
+            }
+
+            var pending = new List<PlayerDraftState>();
+            _suppressAdvance = true;
+            foreach (var state in activeStates)
+            {
                 state.IsPickingNow = true;
 
                 if (state.IsDisconnected)
@@ -585,9 +580,10 @@ namespace DraftModeTOUM.Managers
             {
                 DraftModePlugin.Logger.LogInfo(
                     $"[DraftManager] Offering roles for slot {state.SlotNumber} (pid {state.PlayerId})");
-                var offered = BuildOfferForState(state, _roundOfferReserved);
+                var offered = BuildOfferForState(state, _roundOfferReserved,
+                    lockOf.TryGetValue(state, out var lf) ? lf : null);
                 state.OfferedRoleIds = offered;
-                DraftNetworkHelper.SendTurnAnnouncement(state.SlotNumber, state.PlayerId, offered, CurrentTurn);
+                DraftNetworkHelper.SendTurnAnnouncement(state.SlotNumber, state.PlayerId, offered, CurrentTurn, state.RerollsRemaining);
             }
 
             DraftUiManager.RefreshTurnList();
@@ -625,160 +621,27 @@ namespace DraftModeTOUM.Managers
             return result;
         }
 
-        private static void BuildRoundFactionAllowList()
+        private static List<ushort> BuildOfferForState(PlayerDraftState state, HashSet<ushort> reserved,
+                                                       RoleFaction? lockFaction = null, HashSet<ushort> extraAvoid = null)
         {
-            _roundAllowedFactions.Clear();
-            if (_activeSlots == null || _activeSlots.Count <= 1) return;
-
-            int remainingImp = Mathf.Max(0, MaxImpostors - _impostorsDrafted);
-            int remainingNK  = Mathf.Max(0, MaxNeutralKillings - _neutralKillingsDrafted);
-            int remainingNP  = Mathf.Max(0, MaxNeutralPassives - _neutralPassivesDrafted);
-
-            if (remainingImp + remainingNK + remainingNP <= 0)
-            {
-                foreach (var slot in _activeSlots)
-                    _roundAllowedFactions[slot] = new HashSet<RoleFaction>();
-                return;
-            }
-
-            int allowedSlot = -1;
-            var preferred = _activeSlots
-                .Where(slot =>
-                {
-                    var s = GetStateForSlot(slot);
-                    if (s == null || !s.GuaranteedFaction.HasValue) return false;
-                    var f = s.GuaranteedFaction.Value;
-                    if (f == RoleFaction.Impostor && remainingImp > 0) return true;
-                    if (f == RoleFaction.NeutralKilling && remainingNK > 0) return true;
-                    if (f == RoleFaction.Neutral && remainingNP > 0) return true;
-                    return false;
-                })
-                .ToList();
-
-            if (preferred.Count > 0)
-                allowedSlot = preferred[UnityEngine.Random.Range(0, preferred.Count)];
-            else
-                allowedSlot = _activeSlots[UnityEngine.Random.Range(0, _activeSlots.Count)];
-
-            foreach (var slot in _activeSlots)
-                _roundAllowedFactions[slot] = new HashSet<RoleFaction>();
-
-            if (_roundAllowedFactions.TryGetValue(allowedSlot, out var set))
-            {
-                if (remainingImp > 0) set.Add(RoleFaction.Impostor);
-                if (remainingNK > 0) set.Add(RoleFaction.NeutralKilling);
-                if (remainingNP > 0) set.Add(RoleFaction.Neutral);
-            }
-        }
-
-        private static List<ushort> FilterAvailableForRound(PlayerDraftState state, List<ushort> ids)
-        {
-            if (state == null || ids == null) return ids ?? new List<ushort>();
-            if (_roundAllowedFactions.Count == 0) return ids;
-
-            if (!_roundAllowedFactions.TryGetValue(state.SlotNumber, out var allowed) || allowed.Count == 0)
-            {
-                return ids.Where(id => GetFaction(id) == RoleFaction.Crewmate).ToList();
-            }
-
-            return ids.Where(id =>
-            {
-                var f = GetFaction(id);
-                return f == RoleFaction.Crewmate || allowed.Contains(f);
-            }).ToList();
-        }
-
-        private static List<ushort> BuildOfferForState(PlayerDraftState state, HashSet<ushort> reserved)
-        {
-            int target = OfferedRolesCount;
-            HashSet<ushort> effectiveReserved = reserved;
-            if (_forcedRoleId.HasValue && state != null && state.PlayerId != _forcedRoleTargetId)
-            {
-                effectiveReserved = new HashSet<ushort>(reserved);
-                effectiveReserved.Add(_forcedRoleId.Value);
-            }
-
-            if (_forcedRoleId.HasValue && state.PlayerId == _forcedRoleTargetId)
-            {
+            if (_forcedRoleId.HasValue && state != null && state.PlayerId == _forcedRoleTargetId)
                 return new List<ushort>();
-            }
 
-            var available = GetAvailableIds(effectiveReserved);
-            available = FilterAvailableForRound(state, available);
-            var offered   = new List<ushort>();
-
-            if (available.Count > 0)
+            HashSet<ushort> extraExclude = null;
+            if (_forcedRoleId.HasValue && state != null && state.PlayerId != _forcedRoleTargetId)
+                extraExclude = new HashSet<ushort> { _forcedRoleId.Value };
+            if (extraAvoid != null && extraAvoid.Count > 0)
             {
-                var nonCrew = available.Where(id => GetFaction(id) != RoleFaction.Crewmate).ToList();
-                var crew    = available.Where(id => GetFaction(id) == RoleFaction.Crewmate).ToList();
-
-                int slotIndex  = Math.Max(0, TurnOrder.IndexOf(state.SlotNumber));
-                int totalSlots = Math.Max(1, TurnOrder.Count);
-                float t    = totalSlots == 1 ? 0f : (float)slotIndex / (totalSlots - 1f);
-                float bias = 1f - t;
-
-                int maxEvil = Math.Min(nonCrew.Count, target >= 4 ? 4 : target);
-                int minEvil = nonCrew.Count > 0 ? 1 : 0;
-
-                int evilCount = minEvil;
-                int extraMax  = Math.Max(0, maxEvil - minEvil);
-                for (int i = 0; i < extraMax; i++)
-                {
-                    float chance = 0.25f + 0.55f * bias;
-                    if (UnityEngine.Random.value < chance)
-                        evilCount++;
-                }
-                evilCount = Math.Min(evilCount, maxEvil);
-
-                if (state.GuaranteedFaction.HasValue && nonCrew.Count > 0)
-                {
-                    var bucketPool = GetAvailableForFaction(state.GuaranteedFaction.Value)
-                        .Where(id => !IsRoleReserved(id, reserved)).ToList();
-                    if (bucketPool.Count > 0)
-                    {
-                        offered.AddRange(PickWeightedUnique(bucketPool, 1));
-                        evilCount = Math.Max(0, evilCount - 1);
-                    }
-                }
-
-                if (evilCount > 0)
-                {
-                    var evilPool = nonCrew.Where(id => !offered.Contains(id)).ToList();
-                    offered.AddRange(PickWeightedUnique(evilPool, Math.Min(evilCount, evilPool.Count)));
-                }
-
-                int remaining = target - offered.Count;
-                if (remaining > 0)
-                {
-                    var crewPool = crew.Where(id => !offered.Contains(id)).ToList();
-                    offered.AddRange(PickWeightedUnique(crewPool, Math.Min(remaining, crewPool.Count)));
-                }
-
-                while (offered.Count < target)
-                {
-                    var topUp = available.Where(id => !offered.Contains(id)).ToList();
-                    if (topUp.Count == 0) break;
-                    offered.AddRange(PickWeightedUnique(topUp, 1));
-                }
+                extraExclude ??= new HashSet<ushort>();
+                foreach (var id in extraAvoid) extraExclude.Add(id);
             }
 
-            while (offered.Count < target) offered.Add((ushort)RoleTypes.Crewmate);
+            int slotIndex  = state != null ? Math.Max(0, TurnOrder.IndexOf(state.SlotNumber)) : 0;
+            int totalSlots = Math.Max(1, TurnOrder.Count);
 
-            var finalOffered = offered.OrderBy(_ => UnityEngine.Random.value).ToList();
-            ReserveOffers(reserved, finalOffered);
-            return finalOffered;
+            return _engine.BuildOffer(state, slotIndex, totalSlots, reserved, extraExclude, _roundBudget, lockFaction,
+                state?.LockShare ?? int.MaxValue);
         }
-
-        private static void ReserveOffers(HashSet<ushort> reserved, List<ushort> offered)
-        {
-            foreach (var id in offered)
-                if (IsUniqueRole(id)) reserved.Add(id);
-        }
-
-        private static bool IsUniqueRole(ushort id) => id != (ushort)RoleTypes.Crewmate;
-
-        private static bool IsRoleReserved(ushort id, HashSet<ushort> reserved) =>
-            reserved != null && IsUniqueRole(id) && reserved.Contains(id);
 
         private static IEnumerator CoAutoPickForced(byte playerId, int cardIndex)
         {
@@ -797,10 +660,41 @@ namespace DraftModeTOUM.Managers
             if (!_activeSlots.Contains(state.SlotNumber)) return false;
 
             ushort chosenId = (choiceIndex >= state.OfferedRoleIds.Count)
-                ? PickFullRandomForState(state)
+                ? _engine.PickFullRandomForState(state, _roundChosenRoles, _roundOfferReserved)
                 : state.OfferedRoleIds[choiceIndex];
 
             FinalisePickForState(state, chosenId);
+            return true;
+        }
+
+        public static bool RequestReroll(byte playerId)
+        {
+            if (!AmongUsClient.Instance.AmHost || !IsDraftActive) return false;
+            var state = GetStateForPlayer(playerId);
+            if (state == null || state.HasPicked) return false;
+            if (!_activeSlots.Contains(state.SlotNumber)) return false;
+            if (state.RerollsRemaining <= 0) return false;
+
+            state.RerollsRemaining--;
+
+            // Return this player's current cards to the pool so the fresh offer can draw on them again
+            // (essential when a floor lock leaves only a few cards of the locked faction).
+            var prev = new HashSet<ushort>();
+            if (state.OfferedRoleIds != null)
+                foreach (var id in state.OfferedRoleIds)
+                    if (_engine.IsUniqueRole(id)) { _roundOfferReserved.Remove(id); prev.Add(id); }
+
+            HashSet<ushort> avoid = prev;
+            if (state.FloorLock.HasValue)
+            {
+                int freshLockCards = _engine.GetAvailableForFaction(state.FloorLock.Value)
+                    .Count(id => !prev.Contains(id) && !_roundOfferReserved.Contains(id));
+                if (freshLockCards <= 0) avoid = null;
+            }
+
+            var offered = BuildOfferForState(state, _roundOfferReserved, state.FloorLock, avoid);
+            state.OfferedRoleIds = offered;
+            DraftNetworkHelper.SendTurnAnnouncement(state.SlotNumber, state.PlayerId, offered, CurrentTurn, state.RerollsRemaining);
             return true;
         }
 
@@ -818,50 +712,17 @@ namespace DraftModeTOUM.Managers
                 if (!ShowRandomOption && state.OfferedRoleIds.Count > 0)
                     pick = state.OfferedRoleIds[UnityEngine.Random.Range(0, state.OfferedRoleIds.Count)];
                 else
-                    pick = PickFullRandomForState(state);
+                    pick = _engine.PickFullRandomForState(state, _roundChosenRoles, _roundOfferReserved);
                 FinalisePickForState(state, pick);
             }
             _suppressAdvance = false;
             AdvanceIfRoundComplete();
         }
 
-        private static ushort PickFullRandom(HashSet<ushort> exclude = null)
-        {
-            var available = GetAvailableIds(exclude);
-            if (available.Count == 0) return (ushort)RoleTypes.Crewmate;
-            return UseRoleChances ? PickWeighted(available) : available[UnityEngine.Random.Range(0, available.Count)];
-        }
-
-        private static ushort PickFullRandomForState(PlayerDraftState state)
-        {
-            var exclude = new HashSet<ushort>(_roundChosenRoles);
-            foreach (var id in _roundOfferReserved)
-            {
-                if (!state.OfferedRoleIds.Contains(id)) exclude.Add(id);
-            }
-
-            var pick = PickFullRandom(exclude);
-            if (IsUniqueRole(pick) && exclude.Contains(pick))
-            {
-                pick = PickFullRandom(_roundChosenRoles);
-            }
-            return pick;
-        }
-
         private static void AutoPickForState(PlayerDraftState state)
         {
-            var pick = PickFullRandomForState(state);
+            var pick = _engine.PickFullRandomForState(state, _roundChosenRoles, _roundOfferReserved);
             FinalisePickForState(state, pick);
-        }
-
-        private static bool IsRoleAvailable(ushort roleId)
-        {
-            if (GetDraftedCount(roleId) >= GetMaxCount(roleId)) return false;
-            var faction = GetFaction(roleId);
-            if (faction == RoleFaction.Impostor       && _impostorsDrafted      >= MaxImpostors)       return false;
-            if (faction == RoleFaction.NeutralKilling && _neutralKillingsDrafted >= MaxNeutralKillings) return false;
-            if (faction == RoleFaction.Neutral        && _neutralPassivesDrafted >= MaxNeutralPassives) return false;
-            return true;
         }
 
         private static void FinalisePickForState(PlayerDraftState state, ushort roleId)
@@ -880,16 +741,16 @@ namespace DraftModeTOUM.Managers
                 _forcedRoleTargetId = 255;
             }
 
-            if (IsUniqueRole(roleId) && _roundChosenRoles.Contains(roleId))
+            if (_engine.IsUniqueRole(roleId) && _roundChosenRoles.Contains(roleId))
             {
-                roleId = PickFullRandom(_roundChosenRoles);
+                roleId = _engine.PickFullRandom(_roundChosenRoles);
             }
-            if (!isForced && !IsRoleAvailable(roleId))
+            if (!isForced && !_engine.IsRoleAvailable(roleId))
             {
-                roleId = PickFullRandom(_roundChosenRoles);
+                roleId = _engine.PickFullRandom(_roundChosenRoles);
             }
 
-            if (IsUniqueRole(roleId))
+            if (_engine.IsUniqueRole(roleId))
                 _roundChosenRoles.Add(roleId);
 
             _forcedRolePlayers.Remove(state.PlayerId);
@@ -900,18 +761,13 @@ namespace DraftModeTOUM.Managers
 
             DraftNetworkHelper.BroadcastPickConfirmed(state.SlotNumber, roleId);
 
-            _draftedCounts[roleId] = GetDraftedCount(roleId) + 1;
-
-            var faction = GetFaction(roleId);
-            if      (faction == RoleFaction.Impostor)       _impostorsDrafted++;
-            else if (faction == RoleFaction.NeutralKilling) _neutralKillingsDrafted++;
-            else if (faction == RoleFaction.Neutral)        _neutralPassivesDrafted++;
+            var faction = _engine.Commit(roleId);
 
             LoggingSystem.Debug(
                 $"[DraftManager] Slot {state.SlotNumber} picked {(RoleTypes)roleId} ({faction}). " +
-                $"Caps: Imp={_impostorsDrafted}/{MaxImpostors}, " +
-                $"NK={_neutralKillingsDrafted}/{MaxNeutralKillings}, " +
-                $"NP={_neutralPassivesDrafted}/{MaxNeutralPassives}");
+                $"Caps: Imp={_engine.ImpostorsDrafted}/{MaxImpostors}, " +
+                $"NK={_engine.NeutralKillingsDrafted}/{MaxNeutralKillings}, " +
+                $"NP={_engine.NeutralPassivesDrafted}/{MaxNeutralPassives}");
 
             DraftUiManager.RefreshTurnList();
             if (!_suppressAdvance)
@@ -1096,52 +952,34 @@ namespace DraftModeTOUM.Managers
             UseRoleListForPool    = opts.UseRoleListForPool;   // NEW
             OfferedRolesCount     = Mathf.Clamp(Mathf.RoundToInt(opts.OfferedRolesCount.Value), 1, 9);
             ConcurrentPickCount   = Mathf.Clamp(Mathf.RoundToInt(opts.ConcurrentPicks.Value), 1, 2);
+            RerollsPerPlayer      = Mathf.Clamp(Mathf.RoundToInt(opts.RerollsPerPlayer.Value), 0, 3);
             ShowRandomOption      = opts.ShowRandomOption;
             MaxImpostors          = Mathf.Clamp(Mathf.RoundToInt(opts.MaxImpostors.Value), 0, 10);
             MaxNeutralKillings    = Mathf.Clamp(Mathf.RoundToInt(opts.MaxNeutralKillings.Value), 0, 10);
             MaxNeutralPassives    = Mathf.Clamp(Mathf.RoundToInt(opts.MaxNeutralPassives.Value), 0, 10);
         }
 
-        private static int GetDraftedCount(ushort id) => _draftedCounts.TryGetValue(id, out var c) ? c : 0;
-        private static int GetMaxCount(ushort id)     => _pool.MaxCounts.TryGetValue(id, out var c) ? c : 1;
+        private static DraftConfig BuildConfig() => new DraftConfig
+        {
+            OfferedRolesCount  = OfferedRolesCount,
+            MaxImpostors       = MaxImpostors,
+            MaxNeutralKillings = MaxNeutralKillings,
+            MaxNeutralPassives = MaxNeutralPassives,
+            UseRoleChances     = UseRoleChances,
+            CrewmateRoleId     = (ushort)RoleTypes.Crewmate,
+            EvilOfferChance    = 0.5,
+            SoftImpostorNudge  = true,
+            OfferDiversity     = true,
+            FloorSpreadBias    = 1.0,
+            ImpostorSpreadPower = 1.5,
+            PositionEdge       = 0.25,  // slight early-slot edge: earlier picks favoured, but early can still whiff to all-crew and late slots keep a real shot
+        };
 
         private static RoleFaction GetFaction(ushort id)
         {
             if (_pool.Factions.TryGetValue(id, out var f)) return f;
             var role = RoleManager.Instance?.GetRole((RoleTypes)id);
             return role != null ? RoleCategory.GetFactionFromRole(role) : RoleFaction.Crewmate;
-        }
-
-        private static int GetWeight(ushort id) =>
-            _pool.Weights.TryGetValue(id, out var w) ? Math.Max(1, w) : 1;
-
-        private static ushort PickWeighted(List<ushort> candidates)
-        {
-            int total = candidates.Sum(GetWeight);
-            if (total <= 0) return candidates[UnityEngine.Random.Range(0, candidates.Count)];
-            int roll = UnityEngine.Random.Range(1, total + 1);
-            int acc  = 0;
-            foreach (var id in candidates)
-            {
-                acc += GetWeight(id);
-                if (roll <= acc) return id;
-            }
-            return candidates[UnityEngine.Random.Range(0, candidates.Count)];
-        }
-
-        private static List<ushort> PickWeightedUnique(List<ushort> candidates, int count)
-        {
-            var results = new List<ushort>();
-            var temp    = new List<ushort>(candidates);
-            while (results.Count < count && temp.Count > 0)
-            {
-                var pick = UseRoleChances
-                    ? PickWeighted(temp)
-                    : temp[UnityEngine.Random.Range(0, temp.Count)];
-                results.Add(pick);
-                temp.Remove(pick);
-            }
-            return results;
         }
 
         public static void TriggerEndDraftSequence()

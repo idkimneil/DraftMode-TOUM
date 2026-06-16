@@ -67,6 +67,11 @@ public sealed class DraftModeOptions : AbstractOptionGroup
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
     };
 
+    public ModdedNumberOption RerollsPerPlayer { get; set; } = new("Rerolls Per Player", 1f, 0f, 3f, 1f, MiraNumberSuffixes.None, "0")
+    {
+        Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft
+    };
+
     public ModdedNumberOption TurnDurationSeconds { get; set; } = new("Turn Duration", 10f, 5f, 60f, 1f, MiraNumberSuffixes.Seconds, "0")
     {
         Visible = () => OptionGroupSingleton<DraftModeOptions>.Instance.EnableDraft

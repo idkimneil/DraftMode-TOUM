@@ -19,10 +19,8 @@ namespace DraftModeTOUM
     {
         public static DraftScreenController Instance { get; private set; }
 
-        private sealed class DraftCardVisuals
-        {
-            public SpriteRenderer Aura;
-        }
+        public const int RerollCardIndex = -42;
+        private int _rerollsLeft;
 
         private sealed class DraftCardIdleCache
         {
@@ -32,12 +30,14 @@ namespace DraftModeTOUM
             public Quaternion BaseRotation;
         }
 
-        private static readonly Dictionary<Transform, DraftCardVisuals> _cardVisuals = new();
         private GameObject _screenRoot;
         private ushort[] _offeredRoleIds;
         private bool _hasPicked;
         private TextMeshPro _statusText;
         private TextMeshPro _timerText;
+        private GameObject _tooltipRoot;
+        private TextMeshPro _tooltipText;
+        private const string PickPrompt = "<color=#FFFFFF><b>Pick Your Role!</b></color>";
         private GameObject _timerRoot;
         private GameObject _timerTrack;
         private GameObject _timerFill;
@@ -136,6 +136,58 @@ namespace DraftModeTOUM
             }
         }
 
+        private void BuildTooltip(Transform parent)
+        {
+            if (HudManager.Instance == null || parent == null) return;
+
+            _tooltipRoot = new GameObject("DraftCardTooltip");
+            _tooltipRoot.transform.SetParent(parent, false);
+            _tooltipRoot.transform.localPosition = new Vector3(0f, 2.45f, -1f);
+
+            _tooltipText = _tooltipRoot.AddComponent(
+                Il2CppInterop.Runtime.Il2CppType.Of<TextMeshPro>()).Cast<TextMeshPro>();
+            _tooltipText.font = HudManager.Instance.TaskPanel.taskText.font;
+            _tooltipText.fontMaterial = HudManager.Instance.TaskPanel.taskText.fontMaterial;
+            _tooltipText.fontSize = 1.6f;
+            _tooltipText.alignment = TextAlignmentOptions.Center;
+            _tooltipText.enableWordWrapping = true;
+            _tooltipText.rectTransform.sizeDelta = new Vector2(6.4f, 1.0f);
+            _tooltipText.text = string.Empty;
+
+            var r = _tooltipRoot.GetComponent<Renderer>();
+            if (r != null) { r.sortingLayerName = "UI"; r.sortingOrder = 252; }
+
+            _tooltipText.text = PickPrompt;
+            _tooltipRoot.SetActive(true);
+        }
+
+        private void ShowTooltip(string roleName, string teamName, string description, Color color)
+        {
+            if (_tooltipRoot == null || _tooltipText == null) return;
+            string hex = ColorUtility.ToHtmlStringRGB(color);
+            string desc = string.IsNullOrWhiteSpace(description)
+                ? string.Empty
+                : $"\n<size=68%>{description}</size>";
+            _tooltipText.text =
+                $"<b><color=#{hex}>{roleName}</color></b>  <size=58%><color=#BBBBBB>{teamName}</color></size>{desc}";
+            _tooltipRoot.SetActive(true);
+        }
+
+        private void HideTooltip()
+        {
+            if (_tooltipText != null) _tooltipText.text = PickPrompt;
+        }
+
+        private void DestroyTooltip()
+        {
+            if (_tooltipRoot != null)
+            {
+                try { Destroy(_tooltipRoot); } catch { }
+                _tooltipRoot = null;
+                _tooltipText = null;
+            }
+        }
+
         private void HideTimerProgressLine()
         {
             if (_timerTrack != null) _timerTrack.SetActive(false);
@@ -162,7 +214,7 @@ namespace DraftModeTOUM
             }
         }
 
-        public static void Show(ushort[] roleIds)
+        public static void Show(ushort[] roleIds, int rerollsLeft = 0)
         {
             Hide();
             if (HudManager.Instance?.FullScreen != null)
@@ -171,6 +223,7 @@ namespace DraftModeTOUM
             DontDestroyOnLoad(go);
             Instance = go.AddComponent<DraftScreenController>();
             Instance._offeredRoleIds = roleIds;
+            Instance._rerollsLeft = rerollsLeft;
             Instance.BuildScreen();
         }
 
@@ -180,6 +233,7 @@ namespace DraftModeTOUM
 
             Instance.DestroyBottomTimer();
             Instance.DestroySelectionBackdrop();
+            Instance.DestroyTooltip();
 
             if (Instance._screenRoot != null) Destroy(Instance._screenRoot);
 
@@ -196,7 +250,6 @@ namespace DraftModeTOUM
 
             Instance._idleCardCaches.Clear();
             Instance._idleCardCacheByTransform.Clear();
-            _cardVisuals.Clear();
             Destroy(Instance.gameObject);
             Instance = null;
         }
@@ -253,8 +306,8 @@ namespace DraftModeTOUM
                 {
                     _statusText.font = HudManager.Instance.TaskPanel.taskText.font;
                     _statusText.fontMaterial = HudManager.Instance.TaskPanel.taskText.fontMaterial;
-                    _statusText.text = "<color=#FFFFFF><b>Pick Your Role!</b></color>";
-                    statusGo.gameObject.SetActive(true);
+                    _statusText.text = string.Empty;
+                    statusGo.gameObject.SetActive(false);
                 }
             }
 
@@ -267,9 +320,11 @@ namespace DraftModeTOUM
 
             var rolePrefab = holderGo.gameObject;
 
+            BuildTooltip(_screenRoot.transform);
+
             var idList = new List<ushort>();
             if (_offeredRoleIds != null) idList.AddRange(_offeredRoleIds);
-            var cards = DraftUiManager.BuildCards(idList);
+            var cards = DraftUiManager.BuildCards(idList, _rerollsLeft);
 
             int totalCards = cards.Count;
             float cardScale = CardScaleForCount(totalCards);
@@ -299,7 +354,7 @@ namespace DraftModeTOUM
                     card.RoleName, card.TeamName,
                     card.Icon ?? TouRoleIcons.RandomAny.LoadAsset(),
                     i, totalCards, card.Color,
-                    cardScale, useGrid, spacing);
+                    cardScale, useGrid, spacing, card.Description);
 
                 btn.OnClick.RemoveAllListeners();
                 btn.OnClick.AddListener((UnityAction)(() => OnCardClicked(capturedIdx)));
@@ -526,58 +581,6 @@ namespace DraftModeTOUM
                     Quaternion.Euler(0f, 0f, Mathf.Sin(_backdropTime * 0.9f + phase) * 1.35f);
             }
         }
-        private static DraftCardVisuals DraftCardVisualCache(Transform card)
-        {
-            if (!_cardVisuals.TryGetValue(card, out var visuals))
-            {
-                visuals = new DraftCardVisuals();
-                _cardVisuals[card] = visuals;
-            }
-            return visuals;
-        }
-
-        private static Color GetAllianceColor(string teamName)
-        {
-            if (string.IsNullOrEmpty(teamName)) return new Color(1f, 0.86f, 0.22f, 0.42f);
-            string lower = teamName.ToLowerInvariant();
-            if (lower.Contains("impostor") || lower.Contains("imposter"))
-                return new Color(1f, 0.08f, 0.08f, 0.55f);
-            if (lower.Contains("neutral"))
-                return new Color(0.72f, 0.58f, 1f, 0.48f);
-            if (lower.Contains("crewmate"))
-                return new Color(0.0f, 0.95f, 1f, 0.46f);
-            return new Color(1f, 0.86f, 0.22f, 0.42f);
-        }
-
-        private static void SetAllianceAura(Transform card, Color color, float alpha, float scaleBoost)
-        {
-            if (card == null) return;
-            var visuals = DraftCardVisualCache(card);
-            var aura = visuals.Aura;
-
-            if (aura == null)
-            {
-                var go = new GameObject("DraftCardAllianceAura");
-                go.transform.SetParent(card, false);
-                go.transform.localPosition = new Vector3(0f, 0f, -0.72f);
-                aura = go.AddComponent<SpriteRenderer>();
-                aura.sprite = MakeSoftGlowSprite();
-                aura.sortingLayerName = "UI";
-                aura.sortingOrder = 66;
-                visuals.Aura = aura;
-            }
-
-            aura.color = new Color(color.r, color.g, color.b, alpha);
-            aura.transform.localScale = new Vector3(4.45f * scaleBoost, 5.9f * scaleBoost, 1f);
-        }
-
-        private static void AttachAllianceAura(Transform card, string teamName)
-        {
-            if (card == null) return;
-            Color aura = GetAllianceColor(teamName);
-            SetAllianceAura(card, aura, 0.26f, 1f);
-        }
-
         private static PassiveButton CreateCard(
             GameObject rolePrefab,
             Transform rolesHolder,
@@ -589,7 +592,8 @@ namespace DraftModeTOUM
             Color color,
             float cardScale,
             bool useGrid = false,
-            float spacing = 0f)
+            float spacing = 0f,
+            string description = "")
         {
             var newRoleObj = UnityEngine.Object.Instantiate(rolePrefab, rolesHolder);
             var actualCard = newRoleObj!.transform.GetChild(0);
@@ -611,13 +615,16 @@ namespace DraftModeTOUM
                 if (Instance == null) return;
                 Instance._hoveredCard = actualCard;
                 newRoleObj.transform.localScale = Vector3.one * (cardScale * 1.075f);
+                Instance.ShowTooltip(roleName, teamName, description, color);
             }));
 
             passiveButton.OnMouseOut.AddListener((UnityAction)(() =>
             {
-                if (Instance != null && Instance._hoveredCard == actualCard)
+                if (Instance == null) return;
+                if (Instance._hoveredCard == actualCard)
                     Instance._hoveredCard = null;
                 newRoleObj.transform.localScale = Vector3.one * cardScale;
+                Instance.HideTooltip();
             }));
 
             newRoleObj.transform.localRotation = Quaternion.Euler(0f, 0f, -randZ);
@@ -674,8 +681,6 @@ namespace DraftModeTOUM
                 if (rr != null) { rr.sortingLayerName = "UI"; rr.sortingOrder = 74; }
             }
 
-            AttachAllianceAura(actualCard, teamName);
-
             return passiveButton;
         }
 
@@ -727,47 +732,6 @@ namespace DraftModeTOUM
                 DraftModePlugin.Logger.LogWarning($"[DraftScreen] BetterBloop failed: {bex.Message}");
             }
 
-            Coroutines.Start(CoAllianceRevealEffect(child));
-        }
-
-        private static IEnumerator CoAllianceRevealEffect(Transform card)
-        {
-            if (card == null) yield break;
-
-            var visuals = DraftCardVisualCache(card);
-            Color color = visuals.Aura != null ? visuals.Aura.color : new Color(0f, 0.95f, 1f, 0.46f);
-            color.a = 0.68f;
-            SetAllianceAura(card, color, 0.68f, 1.18f);
-
-            var auraBurst = new GameObject("DraftCardAllianceAuraBurst");
-            auraBurst.transform.SetParent(card, false);
-            auraBurst.transform.localPosition = new Vector3(0f, 0f, -0.74f);
-            auraBurst.transform.localScale = new Vector3(4.2f, 5.6f, 1f);
-            var auraSr = auraBurst.AddComponent<SpriteRenderer>();
-            auraSr.sprite = MakeSoftGlowSprite();
-            auraSr.color = new Color(color.r, color.g, color.b, 0.56f);
-            auraSr.sortingLayerName = "UI";
-            auraSr.sortingOrder = 77;
-
-            const float duration = 0.5f;
-            for (float timer = 0f; timer < duration; timer += Time.deltaTime)
-            {
-                if (auraBurst == null) yield break;
-                float t = Mathf.Clamp01(timer / duration);
-                float eased = Mathf.SmoothStep(0f, 1f, t);
-                SetAllianceAura(card, color, Mathf.Lerp(0.72f, 0.26f, t), Mathf.Lerp(1.22f, 1f, t));
-                if (auraSr != null)
-                {
-                    auraBurst.transform.localScale = new Vector3(
-                        Mathf.Lerp(4.2f, 5.4f, eased), Mathf.Lerp(5.6f, 7.1f, eased), 1f);
-                    auraSr.color = new Color(color.r, color.g, color.b, Mathf.Lerp(0.56f, 0f, t));
-                }
-                yield return null;
-            }
-
-            SetAllianceAura(card, color, 0.26f, 1f);
-            if (auraBurst != null)
-                try { Destroy(auraBurst); } catch { }
         }
 
         private static IEnumerator CoAnimateCardIn(Transform card, int currentCard, int totalCards, float cardScale)
@@ -826,9 +790,6 @@ namespace DraftModeTOUM
             UpdateSelectionBackdrop();
             UpdateCardIdleMotion();
 
-            if (_statusText != null)
-                _statusText.text = "<color=#FFFFFF><b>Pick Your Role!</b></color>";
-
             if (_timerText != null)
             {
                 if (_hasPicked || !DraftManager.IsDraftActive || !_cardsReady)
@@ -868,6 +829,14 @@ namespace DraftModeTOUM
         private void OnCardClicked(int index)
         {
             if (_hasPicked) return;
+
+            if (index == RerollCardIndex)
+            {
+                _hasPicked = true;   // freeze this soon-to-be-replaced screen; the re-offer rebuilds it
+                DraftNetworkHelper.RequestReroll();
+                return;
+            }
+
             _hasPicked = true;
             DraftNetworkHelper.SendPickToHost(index);
             Invoke(nameof(DestroySelf), 1.2f);

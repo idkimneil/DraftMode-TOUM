@@ -11,8 +11,6 @@ namespace DraftModeTOUM.Managers
     public static class DraftSidebarManager
     {
         private static bool _active = false;
-        private static readonly string ColPlayerName  = "#ffdd00ff";
-        private static readonly string ColLocalPlayer = "#8bd5f9ff";
         private static GameObject    _bannerGo;
         private static SpriteRenderer _bannerSr;
 
@@ -20,8 +18,6 @@ namespace DraftModeTOUM.Managers
         {
             if (!IsSettingEnabled()) return;
             _active = true;
-            EnsureBanner();
-            if (_bannerGo != null) _bannerGo.SetActive(true);
             DraftModePlugin.Logger.LogInfo("[DraftSidebar] Activated.");
         }
 
@@ -56,15 +52,13 @@ namespace DraftModeTOUM.Managers
             var roleList = HudManagerPatches.RoleList;
             var tmp      = HudManagerPatches.RoleListTextComp;
             if (roleList == null || tmp == null) return;
-            EnsureBanner();
-            if (_bannerGo != null && !_bannerGo.activeSelf)
-                _bannerGo.SetActive(true);
 
             roleList.SetActive(true);
-            tmp.fontSize    = 3f;
-            tmp.fontSizeMin = 0.5f;
-            tmp.fontSizeMax = 3f;
-            tmp.text        = BuildText();
+            tmp.fontSize           = 3f;
+            tmp.fontSizeMin        = 0.5f;
+            tmp.fontSizeMax        = 3f;
+            tmp.enableWordWrapping = false;
+            tmp.text               = BuildText();
         }
         private static void EnsureBanner()
         {
@@ -104,63 +98,101 @@ namespace DraftModeTOUM.Managers
         {
             var sb = new StringBuilder();
 
-            sb.AppendLine();
-            sb.AppendLine();
-            sb.AppendLine();
-            sb.AppendLine();
-            sb.AppendLine();
-            sb.AppendLine();
-
+            sb.AppendLine(AnimatedTitle());
 
             if (!DraftManager.IsDraftActive)
             {
-                sb.Append($"<color=#ffffffff>Waiting...</color>");
+                sb.AppendLine();
+                sb.Append("<color=#7A8089><i>Waiting to start...</i></color>");
                 return sb.ToString();
             }
+
+            int total = 0, picked = 0;
+            foreach (int slot in DraftManager.TurnOrder)
+            {
+                var s = DraftManager.GetStateForSlot(slot);
+                if (s == null) continue;
+                total++;
+                if (s.HasPicked) picked++;
+            }
+
+            sb.AppendLine($"<size=64%><color=#6B7178>{picked} / {total}  LOCKED IN</color></size>");
+            sb.AppendLine();
 
             foreach (int slot in DraftManager.TurnOrder)
             {
                 var state = DraftManager.GetStateForSlot(slot);
                 if (state == null) continue;
-
-                bool   isMe     = state.PlayerId == PlayerControl.LocalPlayer.PlayerId;
-                string nameCol  = isMe ? ColLocalPlayer : ColPlayerName;
-
-                sb.AppendLine(
-                    $"<color={nameCol}><b>Player {slot:D2}</b></color> " +
-                    BuildStatusLine(state));
+                bool isMe = state.PlayerId == PlayerControl.LocalPlayer.PlayerId;
+                sb.AppendLine(BuildRow(slot, state, isMe));
             }
 
             return sb.ToString().TrimEnd();
         }
 
-        private static string BuildStatusLine(PlayerDraftState state)
+        // Soft light sweeping across the wordmark every frame, for a smooth, premium feel.
+        private static string AnimatedTitle()
         {
-            if (state.IsDisconnected)
-                return $"<color=#ffffffff>DISCONNECTED</color>";
+            float t = Time.time;
+            var sb = new StringBuilder();
+            sb.Append("<size=105%><b>");
+            sb.Append(Shimmer("DRAFT", new Color(0.36f, 0.84f, 0.89f), t, 0));
+            sb.Append(" ");
+            sb.Append(Shimmer("MODE", new Color(1f, 0.31f, 0.31f), t, 6));
+            sb.Append("</b></size>");
+            return sb.ToString();
+        }
 
-            if (state.IsPickingNow && !state.HasPicked)
-                return $"<color=#ffffffff>is picking...</color>";
-
-            if (state.HasPicked && state.ChosenRoleId.HasValue)
+        private static string Shimmer(string word, Color baseCol, float t, int startIdx)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < word.Length; i++)
             {
-                var faction = GetFactionForRole(state.ChosenRoleId.Value);
-                switch (faction)
-                {
-                    case RoleFaction.Impostor:
-                        return $"has picked <color=#FF4444><b>IMPOSTOR</b></color>";
-                    case RoleFaction.NeutralKilling:
-                    case RoleFaction.Neutral:
-                        return $"has picked <color=#7e7e7eff>NEUTRAL</color>";
-                    default:
-                        return $"has picked <color=#00FFFF>CREWMATE</color>";
-                }
+                float w = (Mathf.Sin(t * 2.2f - (startIdx + i) * 0.6f) + 1f) * 0.5f;
+                w *= w; // sharpen the moving glint
+                Color c = Color.Lerp(baseCol, Color.white, w * 0.8f);
+                sb.Append($"<color=#{ColorUtility.ToHtmlStringRGB(c)}>{word[i]}</color>");
+            }
+            return sb.ToString();
+        }
+
+        private static string BuildRow(int slot, PlayerDraftState state, bool isMe)
+        {
+            string you    = isMe ? "  <color=#8BD5F9><b>(you)</b></color>" : string.Empty;
+            string numCol = isMe ? "#8BD5F9" : "#9AA0A6";
+
+            if (state.IsPickingNow && !state.HasPicked && !state.IsDisconnected)
+            {
+                float p = (Mathf.Sin(Time.time * 3.0f) + 1f) * 0.5f;                 // smooth breathing
+                Color c = Color.Lerp(new Color(1f, 0.80f, 0.28f), new Color(1f, 0.97f, 0.74f), p);
+                string hex = ColorUtility.ToHtmlStringRGB(c);
+                return $"<color={numCol}><b>#{slot:D2}</b></color>   <b><color=#{hex}>picking...</color></b>{you}";
             }
 
-            if (state.HasPicked)
-                return $"has picked <color=#00FFFF>CREWMATE</color>";
+            string statusCol, statusTxt;
+            if (state.IsDisconnected)
+            {
+                statusCol = "#6E6E6E"; statusTxt = "disconnected";
+            }
+            else if (state.HasPicked)
+            {
+                switch (state.ChosenRoleId.HasValue ? GetFactionForRole(state.ChosenRoleId.Value) : RoleFaction.Crewmate)
+                {
+                    case RoleFaction.Impostor:       statusCol = "#FF5050"; statusTxt = "Impostor"; break;
+                    case RoleFaction.NeutralKilling:
+                    case RoleFaction.Neutral:        statusCol = "#B06CFF"; statusTxt = "Neutral";  break;
+                    default:                          statusCol = "#5BD7E4"; statusTxt = "Crewmate"; break;
+                }
+            }
+            else
+            {
+                statusCol = "#555B61"; statusTxt = "waiting";
+            }
 
-            return $"<color=#ffffffff>is waiting for turn</color>";
+            string row = $"<color={numCol}><b>#{slot:D2}</b></color>   <color={statusCol}>{statusTxt}</color>{you}";
+            if (isMe)
+                return $"<mark=#8BD5F910>{row}</mark>";
+            return row;
         }
 
         private static RoleFaction GetFactionForRole(ushort roleId)

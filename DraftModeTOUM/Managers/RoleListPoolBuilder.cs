@@ -205,7 +205,7 @@ namespace DraftModeTOUM.Managers
                 int maxCount = ComputeMaxCount(role, faction, entries, factionNeeds, playerCount);
                 if (maxCount <= 0) continue;
                 int weight = GetWeight(role);
-                AddOrUpdateRole(pool, roleId, maxCount, weight, faction);
+                AddOrUpdateRole(pool, roleId, maxCount, weight, faction, GetAlignment(role));
             }
             if (!pool.RoleIds.Contains((ushort)RoleTypes.Crewmate))
             {
@@ -320,7 +320,13 @@ namespace DraftModeTOUM.Managers
             return 100;
         }
 
-        private static void AddOrUpdateRole(DraftRolePool pool, ushort roleId, int maxCount, int weight, RoleFaction faction)
+        private static string GetAlignment(RoleBehaviour role)
+        {
+            try { return MiscUtils.GetParsedRoleAlignment(role) ?? string.Empty; }
+            catch { return string.Empty; }
+        }
+
+        private static void AddOrUpdateRole(DraftRolePool pool, ushort roleId, int maxCount, int weight, RoleFaction faction, string alignment = "")
         {
             if (!pool.MaxCounts.ContainsKey(roleId))
             {
@@ -328,6 +334,7 @@ namespace DraftModeTOUM.Managers
                 pool.MaxCounts[roleId] = Math.Max(1, maxCount);
                 pool.Weights[roleId]   = Math.Max(1, weight);
                 pool.Factions[roleId]  = faction;
+                pool.Alignments[roleId] = alignment ?? string.Empty;
             }
             else
             {

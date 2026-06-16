@@ -37,6 +37,8 @@ namespace DraftModeTOUM
         private TextMeshPro _nowPickingLabel;
         private TextMeshPro _nowPickingValue;
         private GameObject  _roleCardNewRoleObj;
+        private GameObject  _cardTooltipRoot;
+        private TextMeshPro _cardTooltipText;
 
         private static GameObject _cachedRolePrefab;
 
@@ -127,6 +129,8 @@ namespace DraftModeTOUM
             _instance._nowPickingLabel  = null;
             _instance._nowPickingValue  = null;
             _instance.DestroyRoleCard();
+            _instance._cardTooltipRoot  = null;
+            _instance._cardTooltipText  = null;
             _instance._pendingRoleId    = null;
             _instance._shownRoleId      = null;
             _instance._cachedMySlot     = -1;
@@ -147,6 +151,7 @@ namespace DraftModeTOUM
 
         private void OnDestroy()
         {
+            DestroyCardTooltip();
             RestoreHudElements();
             if (_instance == this) _instance = null;
         }
@@ -381,11 +386,12 @@ namespace DraftModeTOUM
             DestroyRoleCard();
             if (!EnsureRolePrefab() || HudManager.Instance == null) return;
 
-            var    role     = DraftUiManager.ResolveRole(roleId);
-            string roleName = role?.NiceName ?? $"Role {roleId}";
-            string teamName = DraftUiManager.GetTeamLabel(role);
-            Sprite icon     = DraftUiManager.GetRoleIcon(role);
-            Color  color    = DraftUiManager.GetRoleColor(role);
+            var    role        = DraftUiManager.ResolveRole(roleId);
+            string roleName    = role?.NiceName ?? $"Role {roleId}";
+            string teamName    = DraftUiManager.GetTeamLabel(role);
+            Sprite icon        = DraftUiManager.GetRoleIcon(role);
+            Color  color       = DraftUiManager.GetRoleColor(role);
+            string description = DraftUiManager.GetRoleDescription(role);
 
             _roleCardNewRoleObj = UnityEngine.Object.Instantiate(
                 _cachedRolePrefab, HudManager.Instance.transform);
@@ -467,12 +473,14 @@ namespace DraftModeTOUM
                 {
                     if (!_cardReady || _roleCardNewRoleObj == null) return;
                     _roleCardNewRoleObj.transform.localScale = Vector3.one * (CardScale * 1.08f);
+                    ShowCardTooltip(roleName, teamName, description, color);
                 }));
                 passiveButton.OnMouseOut.RemoveAllListeners();
                 passiveButton.OnMouseOut.AddListener((Action)(() =>
                 {
                     if (_roleCardNewRoleObj != null)
                         _roleCardNewRoleObj.transform.localScale = Vector3.one * CardScale;
+                    HideCardTooltip();
                 }));
             }
 
@@ -555,8 +563,58 @@ namespace DraftModeTOUM
                 try { UnityEngine.Object.Destroy(_roleCardNewRoleObj); } catch { }
                 _roleCardNewRoleObj = null;
             }
+            HideCardTooltip();
             _cardHiddenForMenu = false;
             _cardReady         = false;
+        }
+
+        private void EnsureCardTooltip()
+        {
+            if (_cardTooltipRoot != null || HudManager.Instance == null) return;
+            if (HudManager.Instance.TaskPanel == null || HudManager.Instance.TaskPanel.taskText == null) return;
+
+            _cardTooltipRoot = new GameObject("DraftWaitingCardTooltip");
+            _cardTooltipRoot.transform.SetParent(HudManager.Instance.transform, false);
+            _cardTooltipRoot.transform.localPosition = new Vector3(2.0f, -1.55f, -22f);
+
+            _cardTooltipText = _cardTooltipRoot.AddComponent<TextMeshPro>();
+            _cardTooltipText.font = HudManager.Instance.TaskPanel.taskText.font;
+            _cardTooltipText.fontMaterial = HudManager.Instance.TaskPanel.taskText.fontMaterial;
+            _cardTooltipText.fontSize = 1.35f;
+            _cardTooltipText.alignment = TextAlignmentOptions.Center;
+            _cardTooltipText.enableWordWrapping = true;
+            _cardTooltipText.rectTransform.sizeDelta = new Vector2(3.5f, 1.3f);
+            _cardTooltipText.text = string.Empty;
+
+            var r = _cardTooltipRoot.GetComponent<Renderer>();
+            if (r != null) { r.sortingLayerName = "UI"; r.sortingOrder = 3; }
+
+            _cardTooltipRoot.SetActive(false);
+        }
+
+        private void ShowCardTooltip(string roleName, string teamName, string description, Color color)
+        {
+            EnsureCardTooltip();
+            if (_cardTooltipRoot == null || _cardTooltipText == null) return;
+            string hex = ColorUtility.ToHtmlStringRGB(color);
+            string desc = string.IsNullOrWhiteSpace(description) ? string.Empty : $"\n<size=70%>{description}</size>";
+            _cardTooltipText.text = $"<b><color=#{hex}>{roleName}</color></b>  <size=60%><color=#BBBBBB>{teamName}</color></size>{desc}";
+            _cardTooltipRoot.SetActive(true);
+        }
+
+        private void HideCardTooltip()
+        {
+            if (_cardTooltipRoot != null) _cardTooltipRoot.SetActive(false);
+        }
+
+        private void DestroyCardTooltip()
+        {
+            if (_cardTooltipRoot != null)
+            {
+                try { UnityEngine.Object.Destroy(_cardTooltipRoot); } catch { }
+            }
+            _cardTooltipRoot = null;
+            _cardTooltipText = null;
         }
 
         private static IEnumerator CoPopInCard(Transform holder, DraftStatusOverlay owner)
@@ -612,6 +670,7 @@ namespace DraftModeTOUM
                 {
                     _roleCardNewRoleObj.SetActive(false);
                     _cardHiddenForMenu = true;
+                    HideCardTooltip();
                 }
                 else if (!_lastMenuOpen && _cardHiddenForMenu && !_roleCardNewRoleObj.activeSelf)
                 {

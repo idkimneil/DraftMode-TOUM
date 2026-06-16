@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>DraftModeTOUM.Tests</AssemblyName>
+    <RootNamespace>DraftModeTOUM.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Pure draft engine source, shared verbatim with the mod (no Unity / game dependencies). -->
+  <ItemGroup>
+    <Compile Include="..\DraftModeTOUM\Managers\RoleFaction.cs" Link="Engine\RoleFaction.cs" />
+    <Compile Include="..\DraftModeTOUM\Managers\DraftRolePool.cs" Link="Engine\DraftRolePool.cs" />
+    <Compile Include="..\DraftModeTOUM\Managers\PlayerDraftState.cs" Link="Engine\PlayerDraftState.cs" />
+    <Compile Include="..\DraftModeTOUM\Managers\IRng.cs" Link="Engine\IRng.cs" />
+    <Compile Include="..\DraftModeTOUM\Managers\DraftConfig.cs" Link="Engine\DraftConfig.cs" />
+    <Compile Include="..\DraftModeTOUM\Managers\DraftDistribution.cs" Link="Engine\DraftDistribution.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Check.cs" />
+    <Compile Include="TestPool.cs" />
+    <Compile Include="DraftSim.cs" />
+    <Compile Include="LobbySim.cs" />
+    <Compile Include="OriginalSim.cs" />
+    <Compile Include="Compare.cs" />
+    <Compile Include="Tests.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+</Project>
