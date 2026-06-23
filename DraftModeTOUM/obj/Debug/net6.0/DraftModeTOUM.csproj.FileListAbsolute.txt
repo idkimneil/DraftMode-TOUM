@@ -1,0 +1,13 @@
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\bin\Debug\net6.0\DraftModeTOUM.deps.json
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\bin\Debug\net6.0\DraftModeTOUM.dll
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\bin\Debug\net6.0\DraftModeTOUM.pdb
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\obj\Debug\net6.0\DraftModeTOUM.csproj.AssemblyReference.cache
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\obj\Debug\net6.0\DraftModeTOUM.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\obj\Debug\net6.0\DraftModeTOUM.AssemblyInfoInputs.cache
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\obj\Debug\net6.0\DraftModeTOUM.AssemblyInfo.cs
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\obj\Debug\net6.0\DraftModeTOUM.csproj.CoreCompileInputs.cache
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\obj\Debug\net6.0\DraftModeTOUM.sourcelink.json
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\obj\Debug\net6.0\DraftModeTOUM.dll
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\obj\Debug\net6.0\refint\DraftModeTOUM.dll
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\obj\Debug\net6.0\DraftModeTOUM.pdb
+C:\Users\antho\Documents\GitHub\DraftMode-TOUM\DraftModeTOUM\obj\Debug\net6.0\ref\DraftModeTOUM.dll
