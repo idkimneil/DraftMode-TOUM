@@ -838,7 +838,7 @@ namespace DraftModeTOUM
 
             if (index == RerollCardIndex)
             {
-                _hasPicked = true;   // freeze this soon-to-be-replaced screen; the re-offer rebuilds it
+                _hasPicked = true; 
                 DraftNetworkHelper.RequestReroll();
                 return;
             }

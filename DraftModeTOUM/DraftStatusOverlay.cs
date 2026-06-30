@@ -699,7 +699,7 @@ namespace DraftModeTOUM
                         int pickerSlot  = -1;
                         int pickerCount = 0;
                         bool isMyTurn   = false;
-                        foreach (var s in DraftManager.GetActivePickerStates())
+                        foreach (var s in DraftManager.GetActivePickerStatesNonAlloc())
                         {
                             if (s == null || !s.IsPickingNow) continue;
                             pickerCount++;
@@ -736,7 +736,7 @@ namespace DraftModeTOUM
             int pickerSlot  = -1;
             int pickerCount = 0;
             bool isMyTurn   = false;
-            foreach (var s in DraftManager.GetActivePickerStates())
+            foreach (var s in DraftManager.GetActivePickerStatesNonAlloc())
             {
                 if (s == null || !s.IsPickingNow) continue;
                 pickerCount++;

@@ -54,7 +54,7 @@ namespace DraftModeTOUM
         {
             public const string PLUGIN_GUID = "com.draftmodetoum.mod";
             public const string PLUGIN_NAME = "Draft Mode";
-            public const string PLUGIN_VERSION = "1.2.0";
+            public const string PLUGIN_VERSION = "1.2.1";
         }
 
         [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnDisconnected))]

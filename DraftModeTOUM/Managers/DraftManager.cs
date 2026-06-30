@@ -120,6 +120,31 @@ namespace DraftModeTOUM.Managers
             return list;
         }
 
+        // Non-allocating variant — returns a reused internal list.
+        // Callers must not hold references across frames.
+        private static readonly List<PlayerDraftState> _activePickerStateCache = new();
+        public static System.Collections.Generic.IReadOnlyList<PlayerDraftState> GetActivePickerStatesNonAlloc()
+        {
+            _activePickerStateCache.Clear();
+
+            if (_activeSlots == null || _activeSlots.Count == 0)
+            {
+                foreach (var s in _slotMap.Values)
+                {
+                    if (s != null && s.IsPickingNow && !s.HasPicked)
+                        _activePickerStateCache.Add(s);
+                }
+                return _activePickerStateCache;
+            }
+
+            foreach (var slot in _activeSlots)
+            {
+                var s = GetStateForSlot(slot);
+                if (s != null) _activePickerStateCache.Add(s);
+            }
+            return _activePickerStateCache;
+        }
+
         public static void SetClientTurn(int turnNumber, int currentPickerSlot)
         {
             if (AmongUsClient.Instance.AmHost) return;
@@ -531,6 +556,17 @@ namespace DraftModeTOUM.Managers
                 var s = GetStateForSlot(slot);
                 if (s != null) activeStates.Add(s);
             }
+
+            // Sanity check: the two counts should agree; a mismatch means the loop above and
+            // _activeSlots.Count are counting differently (e.g. a slot was added after the loop).
+            if (playersRemaining != activeStates.Count)
+            {
+                DraftModePlugin.Logger.LogWarning(
+                    $"[DraftManager] StartRound desync: playersRemaining={playersRemaining} " +
+                    $"activeStates.Count={activeStates.Count}. Using activeStates.Count.");
+                playersRemaining = activeStates.Count;
+            }
+
             var locks = _engine.AssignFloorLocks(playersRemaining, activeStates.Count, TurnOrder.Count);
             var lockOf = new Dictionary<PlayerDraftState, RoleFaction?>();
             for (int i = 0; i < activeStates.Count; i++)
@@ -925,6 +961,12 @@ namespace DraftModeTOUM.Managers
 
             if (PendingRoleAssignments.Count > 0)
             {
+                DraftModePlugin.Logger.LogError(
+                    $"[DraftManager] CoApplyRolesWithRetry TIMED OUT after {timeout}s with " +
+                    $"{PendingRoleAssignments.Count} role(s) still unassigned. " +
+                    "Falling back to /up commands — this is a last resort and may confuse players. " +
+                    "Check RpcSetRole failures above for the root cause.");
+
                 foreach (var kvp in PendingRoleAssignments)
                 {
                     if (_appliedPlayers.Contains(kvp.Key)) continue;
@@ -932,7 +974,14 @@ namespace DraftModeTOUM.Managers
                     var p    = PlayerControl.AllPlayerControls.ToArray().FirstOrDefault(x => x.PlayerId == kvp.Key);
                     if (role != null && p != null)
                     {
+                        DraftModePlugin.Logger.LogError(
+                            $"[DraftManager] /up fallback: assigning '{role.NiceName}' to '{p.Data.PlayerName}' (id={kvp.Key})");
                         UpCommandRequests.SetRequest(p.Data.PlayerName, role.NiceName);
+                    }
+                    else
+                    {
+                        DraftModePlugin.Logger.LogError(
+                            $"[DraftManager] /up fallback failed: role or player not found for playerId={kvp.Key}, roleType={kvp.Value}");
                     }
                 }
                 PendingRoleAssignments.Clear();

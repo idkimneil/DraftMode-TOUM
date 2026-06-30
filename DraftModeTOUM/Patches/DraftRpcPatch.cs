@@ -171,19 +171,19 @@ namespace DraftModeTOUM.Patches
 
         private static void ConsumeStartDraftPacket(MessageReader reader)
         {
-            reader.ReadInt32(); // total
+            reader.ReadInt32();
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++) { reader.ReadByte(); reader.ReadInt32(); }
         }
 
         private static void ConsumeAnnounceTurnPacket(MessageReader reader)
         {
-            reader.ReadInt32(); // turnNumber
-            reader.ReadInt32(); // slot
-            reader.ReadByte();  // pickerId
+            reader.ReadInt32();
+            reader.ReadInt32();
+            reader.ReadByte(); 
             int roleCount = reader.ReadInt32();
             for (int i = 0; i < roleCount; i++) reader.ReadUInt16();
-            reader.ReadByte();  // 
+            reader.ReadByte(); 
         }
 
         private static void HandleStartDraft(MessageReader reader)
@@ -212,6 +212,7 @@ namespace DraftModeTOUM.Patches
                 $"roles: {string.Join(",", roleIds.Select(r => ((RoleTypes)r).ToString()))}");
 
             DraftManager.SetClientTurn(turnNumber, slot);
+            DraftSidebarManager.InvalidateCache();
             DisplayTurnAnnouncement(slot, pickerId, roleIds);
         }
 
@@ -254,6 +255,7 @@ namespace DraftModeTOUM.Patches
             byte dcPlayerId = data.Character.PlayerId;
             DraftModePlugin.Logger.LogInfo($"[DraftManager] Player {dcPlayerId} disconnected during draft");
             DraftManager.HandlePlayerDisconnected(dcPlayerId);
+            DraftSidebarManager.InvalidateCache();
         }
     }
 

@@ -1,63 +1,49 @@
-﻿using MiraAPI.Roles;
-using System.Collections.Generic;
+using MiraAPI.Roles;
+using TownOfUs.Utilities;
+using System;
 using System.Linq;
 
 namespace DraftModeTOUM.Managers
 {
     public static class RoleCategory
     {
-        private static readonly HashSet<string> NeutralKillingRoles =
-            new(System.StringComparer.OrdinalIgnoreCase)
-            {
-                "Arsonist", "Glitch", "Juggernaut", "Plaguebearer",
-                "Pestilence", "SoulCollector", "Vampire", "Werewolf", "SerialKiller", "Frag"
-            };
-
-        private static readonly HashSet<string> NeutralOtherRoles =
-            new(System.StringComparer.OrdinalIgnoreCase)
-            {
-                "Amnesiac", "Fairy", "Mercenary", "Survivor",
-                "Doomsayer", "Executioner", "Jester", "Spectre",
-                "Chef", "Inquisitor"
-            };
-
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// Determine the faction from a live RoleBehaviour instance.
+        /// Uses MiraAPI's team system and alignment string — no hardcoded name lists.
+        /// </summary>
         public static RoleFaction GetFactionFromRole(RoleBehaviour role)
         {
             if (role == null) return RoleFaction.Crewmate;
-
-            
             if (role.IsImpostor) return RoleFaction.Impostor;
 
-            
-            if (role is ICustomRole customRole &&
-                customRole.Team != ModdedRoleTeams.Crewmate &&
-                customRole.Team != ModdedRoleTeams.Impostor)
+            if (role is ICustomRole customRole)
             {
-                
-                string normalized = Normalize(role.NiceName);
-                if (NeutralKillingRoles.Contains(normalized)) return RoleFaction.NeutralKilling;
+                if (customRole.Team == ModdedRoleTeams.Crewmate) return RoleFaction.Crewmate;
+                if (customRole.Team == ModdedRoleTeams.Impostor)  return RoleFaction.Impostor;
+
+                // NK determination via alignment string rather than a hardcoded name list —
+                // picks up new ToU:M NK roles automatically without any mod update.
+                string alignment = string.Empty;
+                try { alignment = MiscUtils.GetParsedRoleAlignment(role)?.ToLowerInvariant() ?? string.Empty; }
+                catch { }
+
+                if (alignment.Contains("killing") && !alignment.Contains("crew"))
+                    return RoleFaction.NeutralKilling;
+
                 return RoleFaction.Neutral;
             }
 
             return RoleFaction.Crewmate;
         }
 
-        
-        
-        
+        /// <summary>
+        /// Determine the faction from a role name string.
+        /// Resolves via RoleManager when possible; falls back to Crewmate.
+        /// </summary>
         public static RoleFaction GetFaction(string roleName)
         {
-            string normalized = Normalize(roleName);
-            if (NeutralKillingRoles.Contains(normalized)) return RoleFaction.NeutralKilling;
-            if (NeutralOtherRoles.Contains(normalized))   return RoleFaction.Neutral;
+            var normalized = Normalize(roleName);
 
-            
             if (RoleManager.Instance != null)
             {
                 foreach (var r in RoleManager.Instance.AllRoles.ToArray())
@@ -72,13 +58,12 @@ namespace DraftModeTOUM.Managers
         }
 
         public static bool IsNeutralKilling(string roleName) =>
-            NeutralKillingRoles.Contains(Normalize(roleName));
+            GetFaction(roleName) == RoleFaction.NeutralKilling;
 
         public static bool IsNeutral(string roleName) =>
-            NeutralOtherRoles.Contains(Normalize(roleName));
+            GetFaction(roleName) == RoleFaction.Neutral;
 
         private static string Normalize(string s) =>
-            (s ?? string.Empty).Replace(" ", "").Replace("-", "");
+            (s ?? string.Empty).Replace(" ", "").Replace("-", "").ToLowerInvariant();
     }
 }
-

@@ -14,6 +14,11 @@ namespace DraftModeTOUM.Managers
         private static GameObject    _bannerGo;
         private static SpriteRenderer _bannerSr;
 
+        // Static content cache — only rebuilt when draft state changes, not every frame
+        private static string _cachedStaticContent = null;
+        private static int    _cachedPickedCount   = -1;
+        private static bool   _cachedDraftActive   = false;
+
         public static void Activate()
         {
             if (!IsSettingEnabled()) return;
@@ -25,6 +30,9 @@ namespace DraftModeTOUM.Managers
         {
             if (!_active) return;
             _active = false;
+            _cachedStaticContent = null;
+            _cachedPickedCount   = -1;
+            _cachedDraftActive   = false;
 
             if (_bannerGo != null) _bannerGo.SetActive(false);
 
@@ -47,6 +55,17 @@ namespace DraftModeTOUM.Managers
         }
 
         public static bool IsActive => _active;
+
+        /// <summary>
+        /// Call when draft state changes in ways not captured by the picked-count cache key
+        /// (e.g. a player disconnects, picker slot changes, or a new turn starts).
+        /// </summary>
+        public static void InvalidateCache()
+        {
+            _cachedStaticContent = null;
+            _cachedPickedCount   = -1;
+            _cachedDraftActive   = false;
+        }
         public static void DrawSidebar()
         {
             var roleList = HudManagerPatches.RoleList;
@@ -58,7 +77,60 @@ namespace DraftModeTOUM.Managers
             tmp.fontSizeMin        = 0.5f;
             tmp.fontSizeMax        = 3f;
             tmp.enableWordWrapping = false;
-            tmp.text               = BuildText();
+            // Only the animated shimmer title needs rebuilding every frame;
+            // the static row content is cached and rebuilt only on state change.
+            tmp.text = AnimatedTitle() + GetStaticContent();
+        }
+
+        private static string GetStaticContent()
+        {
+            bool draftActive = DraftManager.IsDraftActive;
+
+            if (!draftActive)
+            {
+                if (_cachedDraftActive == draftActive && _cachedStaticContent != null)
+                    return _cachedStaticContent;
+                _cachedDraftActive   = draftActive;
+                _cachedPickedCount   = -1;
+                _cachedStaticContent = "\n\n<color=#7A8089><i>Waiting to start...</i></color>";
+                return _cachedStaticContent;
+            }
+
+            int total = 0, picked = 0;
+            foreach (int slot in DraftManager.TurnOrder)
+            {
+                var s = DraftManager.GetStateForSlot(slot);
+                if (s == null) continue;
+                total++;
+                if (s.HasPicked) picked++;
+            }
+
+            // Return cached version if nothing changed
+            if (draftActive == _cachedDraftActive && picked == _cachedPickedCount && _cachedStaticContent != null)
+                return _cachedStaticContent;
+
+            _cachedDraftActive = draftActive;
+            _cachedPickedCount = picked;
+            _cachedStaticContent = BuildStaticRows(total, picked);
+            return _cachedStaticContent;
+        }
+
+        private static string BuildStaticRows(int total, int picked)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine();
+            sb.AppendLine($"<size=64%><color=#6B7178>{picked} / {total}  ROLES PICKED</color></size>");
+            sb.AppendLine();
+
+            foreach (int slot in DraftManager.TurnOrder)
+            {
+                var state = DraftManager.GetStateForSlot(slot);
+                if (state == null) continue;
+                bool isMe = state.PlayerId == PlayerControl.LocalPlayer.PlayerId;
+                sb.AppendLine(BuildRow(slot, state, isMe));
+            }
+
+            return sb.ToString().TrimEnd();
         }
         private static void EnsureBanner()
         {
@@ -92,42 +164,6 @@ namespace DraftModeTOUM.Managers
         {
             var settings = LocalSettingsTabSingleton<DraftModeLocalSettings>.Instance;
             return settings != null && settings.ShowDraftSidebar.Value;
-        }
-
-        private static string BuildText()
-        {
-            var sb = new StringBuilder();
-
-            sb.AppendLine(AnimatedTitle());
-
-            if (!DraftManager.IsDraftActive)
-            {
-                sb.AppendLine();
-                sb.Append("<color=#7A8089><i>Waiting to start...</i></color>");
-                return sb.ToString();
-            }
-
-            int total = 0, picked = 0;
-            foreach (int slot in DraftManager.TurnOrder)
-            {
-                var s = DraftManager.GetStateForSlot(slot);
-                if (s == null) continue;
-                total++;
-                if (s.HasPicked) picked++;
-            }
-
-            sb.AppendLine($"<size=64%><color=#6B7178>{picked} / {total}  ROLES PICKED</color></size>");
-            sb.AppendLine();
-
-            foreach (int slot in DraftManager.TurnOrder)
-            {
-                var state = DraftManager.GetStateForSlot(slot);
-                if (state == null) continue;
-                bool isMe = state.PlayerId == PlayerControl.LocalPlayer.PlayerId;
-                sb.AppendLine(BuildRow(slot, state, isMe));
-            }
-
-            return sb.ToString().TrimEnd();
         }
 
         // Soft light sweeping across the wordmark every frame, for a smooth, premium feel.
@@ -166,7 +202,7 @@ namespace DraftModeTOUM.Managers
                 float p = (Mathf.Sin(Time.time * 3.0f) + 1f) * 0.5f;                 // smooth breathing
                 Color c = Color.Lerp(new Color(1f, 0.80f, 0.28f), new Color(1f, 0.97f, 0.74f), p);
                 string hex = ColorUtility.ToHtmlStringRGB(c);
-                return $"<color={numCol}><b>Player #{slot:D2}</b></color>   <b><color=#{hex}> is picking...</color></b>{you}";
+                return $"<color={numCol}><b>Player #{slot:D2}</b></color> <b><color=#{hex}> is picking...</color></b>{you}";
             }
 
             string statusCol, statusTxt;
@@ -189,7 +225,7 @@ namespace DraftModeTOUM.Managers
                 statusCol = "#ffffff"; statusTxt = "is waiting";
             }
 
-            string row = $"<color={numCol}><b>Player #{slot:D2}</b></color>   <color={statusCol}>{statusTxt}</color>{you}";
+            string row = $"<color={numCol}><b>Player #{slot:D2}</b></color> <color={statusCol}>{statusTxt}</color>{you}";
             if (isMe)
                 return $"<mark=#8BD5F910>{row}</mark>";
             return row;

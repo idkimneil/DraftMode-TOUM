@@ -10,9 +10,11 @@
     <UserSecretsId>ea59876b-746b-4d23-a12e-5728e8d024bd</UserSecretsId>
   </PropertyGroup>
 
-  <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(AmongUs)' != ''">
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AmongUs)/BepInEx/plugins/" UseSymboliclinksIfPossible="true" />
-  </Target>
+  <Target Name="CopyDllToAnotherFolder" AfterTargets="Build">
+  <Copy SourceFiles="$(TargetDir)$(TargetName).dll" 
+        DestinationFolder="/Users/neiljain/Library/Application Support/CrossOver/Bottles/Among Us-2/drive_c/Program Files (x86)/Steam/steamapps/common/Among Us/BepInEx/plugins" 
+        SkipUnchangedFiles="true" />
+</Target>
 
   <ItemGroup>
     <PackageReference Include="TownOfUsMira" Version="1.6.2" />
@@ -25,11 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="modinfo.json" />
-    <EmbeddedResource Include="Resources/DraftLogo.png" />
-    <EmbeddedResource Include="Resources/QuitButton.png" />
-    <EmbeddedResource Include="Resources/DraftBanner.png" />
-    <EmbeddedResource Include="Resources/RerollButton.png" />
+    <EmbeddedResource Include="Resources\**\*" />
   </ItemGroup>
 
 </Project>

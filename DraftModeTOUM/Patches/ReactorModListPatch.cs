@@ -1,4 +1,3 @@
-/*
 using HarmonyLib;
 using Hazel;
 using System;
@@ -48,4 +47,3 @@ namespace DraftModeTOUM.Patches
         }
     }
 }
-*/

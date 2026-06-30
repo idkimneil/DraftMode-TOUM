@@ -40,6 +40,11 @@ namespace DraftModeTOUM.Managers
         private readonly IRng _rng;
         private readonly Dictionary<ushort, int> _drafted = new();
 
+        // Reusable temp buffers — avoids per-BuildOffer LINQ allocations
+        private readonly List<ushort> _tempLockPool       = new();
+        private readonly List<ushort> _tempEvilCandidates = new();
+        private readonly List<ushort> _tempNonCrew        = new();
+
         public int ImpostorsDrafted { get; private set; }
         public int NeutralKillingsDrafted { get; private set; }
         public int NeutralPassivesDrafted { get; private set; }
@@ -262,7 +267,10 @@ namespace DraftModeTOUM.Managers
             // by what we show — the player still chooses which role, never an after-the-fact override.
             if (lockFaction.HasValue)
             {
-                var lockPool = available.Where(id => GetFaction(id) == lockFaction.Value).ToList();
+                _tempLockPool.Clear();
+                foreach (var id in available)
+                    if (GetFaction(id) == lockFaction.Value) _tempLockPool.Add(id);
+                var lockPool = _tempLockPool;
                 if (lockPool.Count > 0)
                 {
                     int take = Math.Min(target, Math.Max(1, lockShare));
@@ -280,20 +288,29 @@ namespace DraftModeTOUM.Managers
                 }
             }
 
-            List<ushort> EvilCandidatesOfFaction(RoleFaction faction) => available
-                .Where(id => GetFaction(id) == faction && !offered.Contains(id) && budget.Remaining(faction) > 0)
-                .ToList();
+            List<ushort> EvilCandidatesOfFaction(RoleFaction faction)
+            {
+                _tempEvilCandidates.Clear();
+                foreach (var id in available)
+                    if (GetFaction(id) == faction && !offered.Contains(id) && budget.Remaining(faction) > 0)
+                        _tempEvilCandidates.Add(id);
+                return _tempEvilCandidates;
+            }
 
             // Impostors enter an offer only through the spread-rate nudge / faction bucket below — never the
             // proportional evil fill — otherwise the impostor-heavy pool front-loads impostors onto early picks.
-            List<ushort> EvilCandidates() => available
-                .Where(id =>
+            List<ushort> EvilCandidates()
+            {
+                _tempEvilCandidates.Clear();
+                foreach (var id in available)
                 {
                     var f = GetFaction(id);
-                    return f != RoleFaction.Crewmate && f != RoleFaction.Impostor
-                        && !offered.Contains(id) && budget.Remaining(f) > 0;
-                })
-                .ToList();
+                    if (f != RoleFaction.Crewmate && f != RoleFaction.Impostor
+                        && !offered.Contains(id) && budget.Remaining(f) > 0)
+                        _tempEvilCandidates.Add(id);
+                }
+                return _tempEvilCandidates;
+            }
 
             bool AddEvilOfFaction(RoleFaction faction)
             {
@@ -307,7 +324,10 @@ namespace DraftModeTOUM.Managers
 
             if (available.Count > 0)
             {
-                var nonCrew = available.Where(id => GetFaction(id) != RoleFaction.Crewmate).ToList();
+                _tempNonCrew.Clear();
+                foreach (var id in available)
+                    if (GetFaction(id) != RoleFaction.Crewmate) _tempNonCrew.Add(id);
+                var nonCrew = _tempNonCrew;
 
                 // Slight early-slot edge: tilt the evil-offer rate by pick position. PositionEdge=0
                 // keeps the old flat behaviour. The tilt is multiplicative and clamped (0.15..0.95 of

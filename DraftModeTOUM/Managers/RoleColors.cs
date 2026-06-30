@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+using MiraAPI.Roles;
+using UnityEngine;
 
 namespace DraftModeTOUM.Managers
 {
@@ -9,95 +10,89 @@ namespace DraftModeTOUM.Managers
         public static readonly Color NeutralFallback  = new Color32(171, 70,  255, 255);
         public static readonly Color RandomColour     = new Color32(59,  204, 59,  255);
 
+        // Per-role overrides that intentionally differ from the role's own colour
+        // (e.g. roles that share a faction fallback but have a distinct brand colour).
+        // Kept intentionally short — the primary lookup is the role object itself.
+        private static readonly System.Collections.Generic.Dictionary<string, Color> _overrides =
+            new(System.StringComparer.OrdinalIgnoreCase)
+        {
+            { "aurial",       new Color32(179, 77,  153, 255) },
+            { "investigator", new Color32(0,   179, 179, 255) },
+            { "lookout",      new Color32(51,  255, 102, 255) },
+            { "mystic",       new Color32(77,  153, 230, 255) },
+            { "seer",         new Color32(255, 204, 128, 255) },
+            { "snitch",       new Color32(212, 176, 56,  255) },
+            { "trapper",      new Color32(166, 209, 179, 255) },
+            { "deputy",       new Color32(255, 204, 0,   255) },
+            { "hunter",       new Color32(41,  171, 135, 255) },
+            { "sheriff",      new Color32(255, 255, 0,   255) },
+            { "veteran",      new Color32(153, 128, 64,  255) },
+            { "vigilante",    new Color32(255, 255, 153, 255) },
+            { "jailor",       new Color32(166, 166, 166, 255) },
+            { "monarch",      new Color32(234, 83,  91,  255) },
+            { "politician",   new Color32(102, 0,   153, 255) },
+            { "prosecutor",   new Color32(179, 128, 0,   255) },
+            { "swapper",      new Color32(102, 230, 102, 255) },
+            { "timelord",     new Color32(135, 137, 211, 255) },
+            { "altruist",     new Color32(102, 0,   0,   255) },
+            { "cleric",       new Color32(0,   255, 179, 255) },
+            { "medic",        new Color32(0,   102, 0,   255) },
+            { "mirrorcaster", new Color32(144, 162, 195, 255) },
+            { "oracle",       new Color32(191, 0,   191, 255) },
+            { "warden",       new Color32(153, 0,   255, 255) },
+            { "engineer",     new Color32(255, 166, 10,  255) },
+            { "imitator",     new Color32(179, 217, 77,  255) },
+            { "medium",       new Color32(166, 128, 255, 255) },
+            { "plumber",      new Color32(204, 102, 0,   255) },
+            { "sentry",       new Color32(100, 150, 200, 255) },
+            { "transporter",  new Color32(0,   237, 255, 255) },
+            { "amnesiac",     new Color32(128, 179, 255, 255) },
+            { "mercenary",    new Color32(140, 102, 153, 255) },
+            { "survivor",     new Color32(255, 230, 77,  255) },
+            { "chef",         new Color32(218, 162, 103, 255) },
+            { "doomsayer",    new Color32(0,   255, 128, 255) },
+            { "executioner",  new Color32(99,  59,  31,  255) },
+            { "inquisitor",   new Color32(217, 66,  145, 255) },
+            { "jester",       new Color32(255, 191, 204, 255) },
+            { "arsonist",     new Color32(255, 77,  0,   255) },
+            { "glitch",       Color.green },
+            { "juggernaut",   new Color32(140, 0,   77,  255) },
+            { "plaguebearer", new Color32(230, 255, 179, 255) },
+            { "pestilence",   new Color32(77,  77,  77,  255) },
+            { "soulcollector",new Color32(153, 255, 204, 255) },
+            { "vampire",      new Color32(163, 41,  41,  255) },
+            { "werewolf",     new Color32(168, 102, 41,  255) },
+        };
+
         public static Color GetColor(string roleName)
         {
-            return roleName.Replace(" ", "").ToLowerInvariant() switch
+            var normalized = roleName.Replace(" ", "").ToLowerInvariant();
+
+            // 1. Check manual overrides first (intentional brand colours)
+            if (_overrides.TryGetValue(normalized, out var overrideColor))
+                return overrideColor;
+
+            // 2. Ask the role itself for its colour — automatically covers all current and future roles
+            if (RoleManager.Instance != null)
             {
-                
-                "aurial"       => new Color32(179, 77,  153, 255),
-                "investigator" => new Color32(0,   179, 179, 255),
-                "lookout"      => new Color32(51,  255, 102, 255),
-                "mystic"       => new Color32(77,  153, 230, 255),
-                "seer"         => new Color32(255, 204, 128, 255),
-                "snitch"       => new Color32(212, 176, 56,  255),
-                "trapper"      => new Color32(166, 209, 179, 255),
-                
-                "deputy"       => new Color32(255, 204, 0,   255),
-                "hunter"       => new Color32(41,  171, 135, 255),
-                "sheriff"      => new Color32(255, 255, 0,   255),
-                "veteran"      => new Color32(153, 128, 64,  255),
-                "vigilante"    => new Color32(255, 255, 153, 255),
-                
-                "jailor"       => new Color32(166, 166, 166, 255),
-                "monarch"      => new Color32(234, 83,  91,  255),
-                "politician"   => new Color32(102, 0,   153, 255),
-                "prosecutor"   => new Color32(179, 128, 0,   255),
-                "swapper"      => new Color32(102, 230, 102, 255),
-                "timelord"     => new Color32(135, 137, 211, 255),
-                
-                "altruist"     => new Color32(102, 0,   0,   255),
-                "cleric"       => new Color32(0,   255, 179, 255),
-                "medic"        => new Color32(0,   102, 0,   255),
-                "mirrorcaster" => new Color32(144, 162, 195, 255),
-                "oracle"       => new Color32(191, 0,   191, 255),
-                "warden"       => new Color32(153, 0,   255, 255),
-                
-                "engineer"     => new Color32(255, 166, 10,  255),
-                "imitator"     => new Color32(179, 217, 77,  255),
-                "medium"       => new Color32(166, 128, 255, 255),
-                "plumber"      => new Color32(204, 102, 0,   255),
-                "sentry"       => new Color32(100, 150, 200, 255),
-                "transporter"  => new Color32(0,   237, 255, 255),
-                
-                "eclipsal"     => ImpostorFallback,
-                "escapist"     => ImpostorFallback,
-                "grenadier"    => ImpostorFallback,
-                "morphling"    => ImpostorFallback,
-                "swooper"      => ImpostorFallback,
-                "venerer"      => ImpostorFallback,
-                "ambusher"     => ImpostorFallback,
-                "bomber"       => ImpostorFallback,
-                "parasite"     => ImpostorFallback,
-                "scavenger"    => ImpostorFallback,
-                "warlock"      => ImpostorFallback,
-                "ambassador"   => ImpostorFallback,
-                "puppeteer"    => ImpostorFallback,
-                "spellslinger" => ImpostorFallback,
-                "blackmailer"  => ImpostorFallback,
-                "hypnotist"    => ImpostorFallback,
-                "janitor"      => ImpostorFallback,
-                "miner"        => ImpostorFallback,
-                "undertaker"   => ImpostorFallback,
-                "traitor"      => ImpostorFallback,
-                
-                "amnesiac"     => new Color32(128, 179, 255, 255),
-                "fairy"        => NeutralFallback,
-                "mercenary"    => new Color32(140, 102, 153, 255),
-                "survivor"     => new Color32(255, 230, 77,  255),
-                
-                "chef"         => new Color32(218, 162, 103, 255),
-                "doomsayer"    => new Color32(0,   255, 128, 255),
-                "executioner"  => new Color32(99,  59,  31,  255),
-                "inquisitor"   => new Color32(217, 66,  145, 255),
-                "jester"       => new Color32(255, 191, 204, 255),
-                
-                "arsonist"     => new Color32(255, 77,  0,   255),
-                "glitch"       => Color.green,
-                "juggernaut"   => new Color32(140, 0,   77,  255),
-                "plaguebearer" => new Color32(230, 255, 179, 255),
-                "pestilence"   => new Color32(77,  77,  77,  255),
-                "soulcollector"=> new Color32(153, 255, 204, 255),
-                "vampire"      => new Color32(163, 41,  41,  255),
-                "werewolf"     => new Color32(168, 102, 41,  255),
-                
-                _ => RoleCategory.GetFaction(roleName) switch
+                foreach (var role in RoleManager.Instance.AllRoles.ToArray())
                 {
-                    RoleFaction.Impostor => ImpostorFallback,
-                    RoleFaction.Neutral  => NeutralFallback,
-                    _                    => CrewFallback
+                    if (role == null) continue;
+                    if (role.NiceName.Replace(" ", "").ToLowerInvariant() != normalized) continue;
+
+                    if (role is ICustomRole cr) return cr.RoleColor;
+                    return role.TeamColor;
                 }
+            }
+
+            // 3. Faction-based fallback
+            return RoleCategory.GetFaction(roleName) switch
+            {
+                RoleFaction.Impostor                   => ImpostorFallback,
+                RoleFaction.Neutral or
+                RoleFaction.NeutralKilling             => NeutralFallback,
+                _                                      => CrewFallback
             };
         }
     }
 }
-
