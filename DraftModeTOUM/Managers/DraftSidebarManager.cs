@@ -13,8 +13,6 @@ namespace DraftModeTOUM.Managers
         private static bool _active = false;
         private static GameObject    _bannerGo;
         private static SpriteRenderer _bannerSr;
-
-        // Static content cache — only rebuilt when draft state changes, not every frame
         private static string _cachedStaticContent = null;
         private static int    _cachedPickedCount   = -1;
         private static bool   _cachedDraftActive   = false;
@@ -55,11 +53,6 @@ namespace DraftModeTOUM.Managers
         }
 
         public static bool IsActive => _active;
-
-        /// <summary>
-        /// Call when draft state changes in ways not captured by the picked-count cache key
-        /// (e.g. a player disconnects, picker slot changes, or a new turn starts).
-        /// </summary>
         public static void InvalidateCache()
         {
             _cachedStaticContent = null;
@@ -77,8 +70,6 @@ namespace DraftModeTOUM.Managers
             tmp.fontSizeMin        = 0.5f;
             tmp.fontSizeMax        = 3f;
             tmp.enableWordWrapping = false;
-            // Only the animated shimmer title needs rebuilding every frame;
-            // the static row content is cached and rebuilt only on state change.
             tmp.text = AnimatedTitle() + GetStaticContent();
         }
 
@@ -104,8 +95,6 @@ namespace DraftModeTOUM.Managers
                 total++;
                 if (s.HasPicked) picked++;
             }
-
-            // Return cached version if nothing changed
             if (draftActive == _cachedDraftActive && picked == _cachedPickedCount && _cachedStaticContent != null)
                 return _cachedStaticContent;
 
@@ -166,7 +155,6 @@ namespace DraftModeTOUM.Managers
             return settings != null && settings.ShowDraftSidebar.Value;
         }
 
-        // Soft light sweeping across the wordmark every frame, for a smooth, premium feel.
         private static string AnimatedTitle()
         {
             float t = Time.time;

@@ -307,16 +307,11 @@ namespace DraftModeTOUM.Managers
 
         private static bool SlotAcceptsRole(RoleListSlotEntry entry, RoleBehaviour role, RoleFaction faction)
         {
-            // Any: no restriction
             if (entry.IsAny) return true;
-
-            // NonImp: Crewmate or any Neutral
             if (entry.IsNonImp)
                 return faction == RoleFaction.Crewmate
                     || faction == RoleFaction.Neutral
                     || faction == RoleFaction.NeutralKilling;
-
-            // NeutRandom
             if (!entry.FactionConstraint.HasValue && entry.Category == RoleListCategory.None)
                 return faction == RoleFaction.Neutral || faction == RoleFaction.NeutralKilling;
 

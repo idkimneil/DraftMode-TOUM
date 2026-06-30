@@ -70,13 +70,13 @@ namespace DraftModeTOUM.Managers
             catch { return string.Empty; }
         }
 
-        public static RoleBehaviour ResolveRole(ushort roleId)  // removed ?
+        public static RoleBehaviour ResolveRole(ushort roleId)
         {
             try { return RoleManager.Instance?.GetRole((RoleTypes)roleId); }
             catch { return null; }
         }
 
-        public static string GetTeamLabel(RoleBehaviour role)  // removed ?
+        public static string GetTeamLabel(RoleBehaviour role) 
         {
             if (role == null) return "Unknown";
             try { return MiscUtils.GetParsedRoleAlignment(role); } catch { }
@@ -89,7 +89,7 @@ namespace DraftModeTOUM.Managers
             };
         }
 
-        public static Sprite GetRoleIcon(RoleBehaviour role)  // removed ?
+        public static Sprite GetRoleIcon(RoleBehaviour role)
         {
             if (role is ICustomRole cr && cr.Configuration.Icon != null)
             {
@@ -99,7 +99,7 @@ namespace DraftModeTOUM.Managers
             return TouRoleIcons.RandomAny.LoadAsset();
         }
 
-        public static Color GetRoleColor(RoleBehaviour role)  // removed ?
+        public static Color GetRoleColor(RoleBehaviour role)
         {
             if (role is ICustomRole cr) return cr.RoleColor;
             if (role != null)           return role.TeamColor;

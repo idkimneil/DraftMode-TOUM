@@ -16,11 +16,8 @@ namespace DraftModeTOUM.Managers
 
             try
             {
-                // Handle vanilla roles first
                 if (normalized == "crewmate") { player.RpcSetRole(RoleTypes.Crewmate); return; }
                 if (normalized == "impostor") { player.RpcSetRole(RoleTypes.Impostor); return; }
-
-                // Find the role via MiraAPI — no hardcoded switch needed; supports all current and future ToU:M roles
                 var role = MiscUtils.AllRegisteredRoles
                     .FirstOrDefault(r => r != null &&
                         string.Equals(Normalize(r.NiceName), normalized, StringComparison.OrdinalIgnoreCase));

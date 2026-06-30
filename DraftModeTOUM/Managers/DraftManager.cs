@@ -120,8 +120,6 @@ namespace DraftModeTOUM.Managers
             return list;
         }
 
-        // Non-allocating variant — returns a reused internal list.
-        // Callers must not hold references across frames.
         private static readonly List<PlayerDraftState> _activePickerStateCache = new();
         public static System.Collections.Generic.IReadOnlyList<PlayerDraftState> GetActivePickerStatesNonAlloc()
         {
@@ -557,8 +555,7 @@ namespace DraftModeTOUM.Managers
                 if (s != null) activeStates.Add(s);
             }
 
-            // Sanity check: the two counts should agree; a mismatch means the loop above and
-            // _activeSlots.Count are counting differently (e.g. a slot was added after the loop).
+
             if (playersRemaining != activeStates.Count)
             {
                 DraftModePlugin.Logger.LogWarning(
@@ -824,27 +821,17 @@ namespace DraftModeTOUM.Managers
 
         private static void FinishDraft()
         {
-            // Snapshot options BEFORE Reset() wipes them
             bool doRecap     = ShowRecap;
             bool doAutoStart = AutoStartAfterDraft;
 
             ApplyAllRoles();
 
-            // Stop the timer and close UI while IsDraftActive is still true
-            // so CloseAll() correctly transitions the overlay to Waiting state
-            // instead of doing nothing
             TurnTimerRunning = false;
             DraftUiManager.CloseAll();
-
-            // Now mark the draft inactive and set the overlay to BackgroundOnly
             IsDraftActive = false;
             DraftStatusOverlay.SetState(OverlayState.BackgroundOnly);
-
             var recapEntries = BuildRecapEntries();
             DraftNetworkHelper.BroadcastRecap(recapEntries, doRecap);
-
-            // Kick off the end sequence, passing the snapshotted values so
-            // Reset() cannot wipe them before the coroutine reads them
             TriggerEndDraftSequence(doRecap, doAutoStart);
         }
 
@@ -1032,9 +1019,6 @@ namespace DraftModeTOUM.Managers
             var role = RoleManager.Instance?.GetRole((RoleTypes)id);
             return role != null ? RoleCategory.GetFactionFromRole(role) : RoleFaction.Crewmate;
         }
-
-        // Called only from FinishDraft (host) and from the Recap RPC handler (clients).
-        // doRecap and doAutoStart are passed in as snapshots so Reset() cannot wipe them.
         public static void TriggerEndDraftSequence(bool doRecap = false, bool doAutoStart = true)
         {
             if (_endSequenceRunning) return;
@@ -1046,12 +1030,10 @@ namespace DraftModeTOUM.Managers
         {
             yield return new WaitForSeconds(doRecap ? 5.0f : 0.5f);
 
-            // If something (disconnect, cancel) already cleared the flag, bail out.
             if (!_endSequenceRunning) yield break;
 
             try { DraftRecapOverlay.Hide(); } catch { }
 
-            // Safe to reset now — we are done reading doRecap/doAutoStart from snapshots.
             Reset(cancelledBeforeCompletion: false);
 
             if (!doAutoStart)
