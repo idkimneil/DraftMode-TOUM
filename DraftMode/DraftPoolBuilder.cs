@@ -1,9 +1,9 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using AmongUs.GameOptions;
-using DraftMode.Options;
+using System.Collections.Generic;
 using MiraAPI.GameOptions;
+using DraftMode.Options;
+
 
 namespace DraftMode;
 
@@ -86,31 +86,16 @@ public static class DraftPoolBuilder
         UnityRng rng       = new();
         var usedCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        int maxImpostors = GameOptionsManager.Instance?.CurrentGameOptions?.NumImpostors ?? int.MaxValue;
-        int impostorSlotsUsed = 0;
-
         int limit = Math.Min(numPlayers, slots.Length);
         for (int i = 0; i < limit; i++)
         {
             var roleNames = DraftRolePool.ResolveBucketToRoleNames(RoleListOptionToString(slots[i]));
             if (roleNames == null || roleNames.Count == 0) continue;
 
-            if (impostorSlotsUsed >= maxImpostors)
-            {
-                roleNames = roleNames.Where(n => !DraftRolePool.IsImpostorRoleName(n)).ToList();
-                if (roleNames.Count == 0)
-                    roleNames = DraftRolePool.ResolveBucketToRoleNames(RoleListOptionToString(RoleListOption.NonImp));
-                if (roleNames == null || roleNames.Count == 0) continue;
-            }
-
-            var offeredThisSlot = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            bool slotIsImpostor = false;
-
             for (int k = 0; k < rolesPerSlot; k++)
             {
                 var candidates = roleNames
                     .Where(n => !string.IsNullOrWhiteSpace(n))
-                    .Where(n => !offeredThisSlot.Contains(n))
                     .Where(n => usedCounts.GetValueOrDefault(n) < DraftRolePool.GetMaxCountForRoleName(n))
                     .ToList();
 
@@ -119,12 +104,7 @@ public static class DraftPoolBuilder
                 var chosen = candidates[rng.NextInt(candidates.Count)];
                 pool.Add($"{chosen}|{i}");
                 usedCounts[chosen] = usedCounts.GetValueOrDefault(chosen) + 1;
-                offeredThisSlot.Add(chosen);
-
-                if (DraftRolePool.IsImpostorRoleName(chosen)) slotIsImpostor = true;
             }
-
-            if (slotIsImpostor) impostorSlotsUsed++;
         }
 
         return pool;
@@ -184,7 +164,6 @@ public static class DraftPoolBuilder
 
         var names = DraftRolePool.ResolveBucketToRoleNames(RoleListOptionToString(bucket))
             ?.Where(n => !string.IsNullOrWhiteSpace(n))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         if (names == null || names.Count == 0) return;
 

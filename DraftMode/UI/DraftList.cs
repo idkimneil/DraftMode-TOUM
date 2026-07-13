@@ -1,4 +1,5 @@
 using System.Text;
+using System.Linq;
 using HarmonyLib;
 using MiraAPI.GameOptions;
 using UnityEngine;
@@ -76,7 +77,15 @@ namespace DraftMode
         private static void AppendRoleListPool(StringBuilder sb)
         {
             var list = OptionGroupSingleton<RoleDraftRoleListOptions>.Instance;
-            const int maxSlots = 15;
+            const int hardCap = 15;
+
+            // Only show as many slots as there are players currently in the lobby --
+            // this is re-evaluated every call (the patch fires on every HUD update
+            // while in the lobby), so the list grows/shrinks live as players join or
+            // leave without needing a separate join/leave hook.
+            int playerCount = PlayerControl.AllPlayerControls?.ToArray()
+                .Count(p => p != null && !p.Data.Disconnected) ?? 0;
+            int maxSlots = Mathf.Clamp(playerCount, 0, hardCap);
 
             for (var i = 0; i < maxSlots; i++)
             {

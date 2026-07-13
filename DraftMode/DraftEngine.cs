@@ -20,6 +20,7 @@ namespace DraftMode
         private List<string> _pool = new();
         private readonly List<int> _slotOrder = new();
         private readonly HashSet<int> _specialEligibleSlots = new();
+        private int _totalNeutralGroupsInPool;
         private int _currentTurnNumber;
         private int _totalSlots;
         private int _turnIndex;
@@ -91,6 +92,7 @@ namespace DraftMode
             int specialUnits = CountSpecialUnits(_pool);
             for (int i = 0; i < Math.Min(specialUnits, eligiblePool.Count); i++)
                 _specialEligibleSlots.Add(eligiblePool[i]);
+            _totalNeutralGroupsInPool = CountGroupsByPredicate(_pool, DraftRolePool.IsNeutralRoleName);
 
             DraftManager.SetDraftStateFromHost(totalSlots, pidToSlot.Keys.ToList(), pidToSlot.Values.ToList());
             MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, "[DraftEngine] Draft state set locally");
@@ -185,25 +187,38 @@ namespace DraftMode
             }
 
              var roleOpts = OptionGroupSingleton<DraftOptions>.Instance;
+            int maxImps;
+            int maxNeuts;
+
             if (roleOpts != null && !roleOpts.UseRoleListForPool)
             {
                 var impOpts = OptionGroupSingleton<RoleDraftImpOptions>.Instance;
                 var neutOpts = OptionGroupSingleton<RoleDraftNeutOptions>.Instance;
-                
-                int maxImps = impOpts != null ? Math.Max(0, (int)impOpts.MaxImpostors.Value) : int.MaxValue;
-                int maxNeuts = neutOpts != null ? Math.Max(0, (int)neutOpts.MaxNeutrals.Value) : int.MaxValue;
 
-                bool blockImps = currentImps >= maxImps;
-                bool blockNeuts = currentNeuts >= maxNeuts;
+                maxImps = impOpts != null ? Math.Max(0, (int)impOpts.MaxImpostors.Value) : int.MaxValue;
+                maxNeuts = neutOpts != null ? Math.Max(0, (int)neutOpts.MaxNeutrals.Value) : int.MaxValue;
+            }
+            else
+            {
+                // Role List mode has no MaxImpostors/MaxNeutrals option group -- the
+                // equivalent caps are the lobby's configured impostor count and however
+                // many neutral-tagged groups were actually built into the pool. Previously
+                // this whole block was skipped in this mode, so nothing stopped the draft
+                // from handing out more impostors/neutrals than intended.
+                maxImps = GameOptionsManager.Instance?.CurrentGameOptions?.NumImpostors ?? int.MaxValue;
+                maxNeuts = _totalNeutralGroupsInPool;
+            }
 
-                if (blockImps || blockNeuts)
+            bool blockImps = currentImps >= maxImps;
+            bool blockNeuts = currentNeuts >= maxNeuts;
+
+            if (blockImps || blockNeuts)
+            {
+                foreach (var n in _pool)
                 {
-                    foreach (var n in _pool)
-                    {
-                        if (string.IsNullOrEmpty(n) || n == "__RANDOM__") continue;
-                        if (blockImps && DraftRolePool.IsImpostorRoleName(n)) avoid.Add(n);
-                        if (blockNeuts && DraftRolePool.IsNeutralRoleName(n)) avoid.Add(n);
-                    }
+                    if (string.IsNullOrEmpty(n) || n == "__RANDOM__") continue;
+                    if (blockImps && DraftRolePool.IsImpostorRoleName(n)) avoid.Add(n);
+                    if (blockNeuts && DraftRolePool.IsNeutralRoleName(n)) avoid.Add(n);
                 }
             }
 
@@ -232,6 +247,23 @@ namespace DraftMode
                 if (!groups.ContainsKey(tag))
                     groups[tag] = isSpecial;
                 else if (isSpecial)
+                    groups[tag] = true;
+            }
+            return groups.Values.Count(v => v);
+        }
+
+        private static int CountGroupsByPredicate(List<string> pool, Func<string, bool> predicate)
+        {
+            var groups = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in pool)
+            {
+                if (string.IsNullOrEmpty(entry)) continue;
+                int pipeIdx = entry.IndexOf('|');
+                string tag = pipeIdx >= 0 ? entry.Substring(pipeIdx) : entry;
+                bool matches = predicate(entry);
+                if (!groups.ContainsKey(tag))
+                    groups[tag] = matches;
+                else if (matches)
                     groups[tag] = true;
             }
             return groups.Values.Count(v => v);
@@ -430,6 +462,16 @@ namespace DraftMode
             if (chosenName == "__RANDOM__" || chosenName == null)
             {
                 var remaining = _pool.Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
+
+                // Random/auto-picks (timeout, bot/disconnected, or a collision fallback)
+                // must respect the same impostor/neutral caps and special-role eligibility
+                // as normal offers -- otherwise an auto-pick can hand an impostor or
+                // neutral role to a slot that was never eligible for one, or push the
+                // impostor/neutral count past the configured max.
+                var avoidForSlot = GetAvoidNamesForTurn(slot);
+                var eligibleRemaining = remaining.Where(r => !avoidForSlot.Contains(r)).ToList();
+                if (eligibleRemaining.Count > 0) remaining = eligibleRemaining;
+
                 if (remaining.Count > 0)
                 {
                     var randomName = remaining[_rng.NextInt(remaining.Count)];
@@ -438,7 +480,23 @@ namespace DraftMode
                 }
                 else
                 {
-                    chosenRoleId = 0;
+                    // Pool is completely exhausted. This should be rare now that
+                    // BuildPoolFromRoleList guarantees every slot contributes at least
+                    // one entry, but if it still happens, don't leave the player with
+                    // no role -- grab any currently-usable role instead of returning 0.
+                    var anyNames = DraftRolePool.ResolveBucketToRoleNames(nameof(RoleListOption.Any))
+                        ?.Where(n => !string.IsNullOrWhiteSpace(n)).ToList() ?? new List<string>();
+                    if (anyNames.Count > 0)
+                    {
+                        var fallbackName = anyNames[_rng.NextInt(anyNames.Count)];
+                        chosenRoleId = DraftRolePool.ChooseRepresentativeRoleId(new List<string> { fallbackName });
+                        MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Warning,
+                            $"[DraftEngine] Pool exhausted for slot {slot}, assigned emergency fallback role id {chosenRoleId}");
+                    }
+                    else
+                    {
+                        chosenRoleId = 0;
+                    }
                 }
             }
             else
