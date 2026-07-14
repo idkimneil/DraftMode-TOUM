@@ -1,0 +1,13 @@
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/bin/Debug/net6.0/DraftMode.deps.json
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/bin/Debug/net6.0/DraftMode.dll
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/bin/Debug/net6.0/DraftMode.pdb
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/obj/Debug/net6.0/DraftMode.csproj.AssemblyReference.cache
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/obj/Debug/net6.0/DraftMode.GeneratedMSBuildEditorConfig.editorconfig
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/obj/Debug/net6.0/DraftMode.AssemblyInfoInputs.cache
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/obj/Debug/net6.0/DraftMode.AssemblyInfo.cs
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/obj/Debug/net6.0/DraftMode.csproj.CoreCompileInputs.cache
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/obj/Debug/net6.0/DraftMode.sourcelink.json
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/obj/Debug/net6.0/DraftMode.dll
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/obj/Debug/net6.0/refint/DraftMode.dll
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/obj/Debug/net6.0/DraftMode.pdb
+/Users/neiljain/Documents/GitHub/DraftMode-TOUM/DraftMode/obj/Debug/net6.0/ref/DraftMode.dll

@@ -169,6 +169,17 @@ namespace DraftMode
             return role.IsImpostor();
         }
 
+        public static bool IsRecruiterRoleName(string name)
+        {
+            var role = FindRoleByName(name);
+            if (role == null) return false;
+
+            var roleName = role.GetRoleName();
+            if (string.IsNullOrWhiteSpace(roleName)) return false;
+
+            return NormalizeName(roleName) == "recruiter";
+        }
+
         public static bool IsNeutralRoleName(string name)
         {
             var role = FindRoleByName(name);
@@ -326,6 +337,39 @@ namespace DraftMode
                 MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftRolePool] Exception in IsRoleEnabled for {role.GetType().Name}: {ex}");
             }
             return false;
+        }
+
+        public static int GetRoleChance(RoleBehaviour role)
+        {
+            if (role == null) return 0;
+            try
+            {
+                if (role is ICustomRole customRole && customRole.Configuration.MaxRoleCount != 0)
+                {
+                    var chanceObj = customRole.GetChance();
+                    return chanceObj != null ? (int)chanceObj : 0;
+                }
+                else
+                {
+                    var RoleOptions = GameOptionsManager.Instance?.CurrentGameOptions?.RoleOptions;
+                    if (RoleOptions != null)
+                    {
+                        return RoleOptions.GetChancePerGame(role.Role);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftRolePool] Exception in GetRoleChance for {role.GetType().Name}: {ex}");
+            }
+            return 0;
+        }
+
+        public static int GetChanceForRoleName(string name)
+        {
+            var role = FindRoleByName(name);
+            if (role == null) return 100;
+            return Math.Clamp(GetRoleChance(role), 1, 100);
         }
 
         public static int GetRoleCount(RoleBehaviour role)

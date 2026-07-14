@@ -21,6 +21,7 @@ namespace DraftMode
         private readonly List<int> _slotOrder = new();
         private readonly HashSet<int> _specialEligibleSlots = new();
         private int _totalNeutralGroupsInPool;
+        private int _totalImpostorGroupsInPool;
         private int _currentTurnNumber;
         private int _totalSlots;
         private int _turnIndex;
@@ -93,6 +94,7 @@ namespace DraftMode
             for (int i = 0; i < Math.Min(specialUnits, eligiblePool.Count); i++)
                 _specialEligibleSlots.Add(eligiblePool[i]);
             _totalNeutralGroupsInPool = CountGroupsByPredicate(_pool, DraftRolePool.IsNeutralRoleName);
+            _totalImpostorGroupsInPool = CountGroupsByPredicate(_pool, DraftRolePool.IsImpostorRoleName);
 
             DraftManager.SetDraftStateFromHost(totalSlots, pidToSlot.Keys.ToList(), pidToSlot.Values.ToList());
             MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, "[DraftEngine] Draft state set locally");
@@ -152,6 +154,8 @@ namespace DraftMode
 
             int currentImps = 0;
             int currentNeuts = 0;
+            bool recruiterReserved = false;
+            bool nonRecruiterImpReserved = false;
 
             foreach (var s in DraftManager.GetAllStates())
             {
@@ -162,6 +166,13 @@ namespace DraftMode
                     {
                         if (DraftRolePool.IsImpostorRoleName(roleName)) currentImps++;
                         else if (DraftRolePool.IsNeutralRoleName(roleName)) currentNeuts++;
+
+                        // Recruiter (DivanMods) is a single impostor at spawn that later
+                        // recruits a teammate -- it can never coexist with a normally
+                        // spawned impostor, in either order, or drafted players end up
+                        // missing the role they picked.
+                        if (DraftRolePool.IsRecruiterRoleName(roleName)) recruiterReserved = true;
+                        else if (DraftRolePool.IsImpostorRoleName(roleName)) nonRecruiterImpReserved = true;
                     }
                 }
             }
@@ -172,6 +183,8 @@ namespace DraftMode
 
                 bool hasImp = false;
                 bool hasNeut = false;
+                bool hasRecruiter = false;
+                bool hasNonRecruiterImp = false;
 
                 foreach (var n in kvp.Value)
                 {
@@ -180,10 +193,15 @@ namespace DraftMode
 
                     if (DraftRolePool.IsImpostorRoleName(n)) hasImp = true;
                     if (DraftRolePool.IsNeutralRoleName(n)) hasNeut = true;
+
+                    if (DraftRolePool.IsRecruiterRoleName(n)) hasRecruiter = true;
+                    else if (DraftRolePool.IsImpostorRoleName(n)) hasNonRecruiterImp = true;
                 }
 
                 if (hasImp) currentImps++;
                 if (hasNeut) currentNeuts++;
+                if (hasRecruiter) recruiterReserved = true;
+                if (hasNonRecruiterImp) nonRecruiterImpReserved = true;
             }
 
              var roleOpts = OptionGroupSingleton<DraftOptions>.Instance;
@@ -201,15 +219,15 @@ namespace DraftMode
             else
             {
                 // Role List mode has no MaxImpostors/MaxNeutrals option group -- the
-                // equivalent caps are the lobby's configured impostor count and however
-                // many neutral-tagged groups were actually built into the pool. Previously
-                // this whole block was skipped in this mode, so nothing stopped the draft
-                // from handing out more impostors/neutrals than intended.
-                maxImps = GameOptionsManager.Instance?.CurrentGameOptions?.NumImpostors ?? int.MaxValue;
+                // equivalent caps are however many impostor/neutral-tagged groups were
+                // actually built into the pool from the role list slots, not the lobby's
+                // base impostor count (which is a separate, unrelated setting and can be
+                // higher than the number of impostor slots the role list actually has).
+                maxImps = _totalImpostorGroupsInPool;
                 maxNeuts = _totalNeutralGroupsInPool;
             }
 
-            bool blockImps = currentImps >= maxImps;
+            bool blockImps = currentImps >= maxImps || recruiterReserved;
             bool blockNeuts = currentNeuts >= maxNeuts;
 
             if (blockImps || blockNeuts)
@@ -219,6 +237,15 @@ namespace DraftMode
                     if (string.IsNullOrEmpty(n) || n == "__RANDOM__") continue;
                     if (blockImps && DraftRolePool.IsImpostorRoleName(n)) avoid.Add(n);
                     if (blockNeuts && DraftRolePool.IsNeutralRoleName(n)) avoid.Add(n);
+                }
+            }
+
+            if (nonRecruiterImpReserved)
+            {
+                foreach (var n in _pool)
+                {
+                    if (string.IsNullOrEmpty(n) || n == "__RANDOM__") continue;
+                    if (DraftRolePool.IsRecruiterRoleName(n)) avoid.Add(n);
                 }
             }
 
@@ -420,7 +447,9 @@ namespace DraftMode
 
             MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"[DraftEngine] Reroll requested by player {playerId}");
 
-            _currentOffers = DraftPoolBuilder.GetOfferedRoles(_pool, _rng);
+            var avoidNames = GetAvoidNamesForTurn(currentSlot);
+            _currentOffers = DraftPoolBuilder.GetOfferedRoles(_pool, _rng, avoidNames);
+            _currentOffersBySlot[currentSlot] = _currentOffers;
             var pickedRoleCandidates = new List<ushort>();
             foreach (var roleName in _currentOffers)
             {
@@ -432,6 +461,26 @@ namespace DraftMode
 
             state.PendingPickIndex = 255;
             DraftNetworkHelper.SendTurnAnnouncement(currentSlot, playerId, pickedRoleCandidates, _currentTurnNumber);
+        }
+
+        private void RemovePickedSeatFromPool(string chosenName)
+        {
+            if (string.IsNullOrEmpty(chosenName) || chosenName == "__RANDOM__")
+            {
+                if (!string.IsNullOrEmpty(chosenName)) _pool.Remove(chosenName);
+                return;
+            }
+
+            int pipeIdx = chosenName.IndexOf('|');
+            if (pipeIdx >= 0)
+            {
+                string slotSuffix = chosenName.Substring(pipeIdx);
+                _pool.RemoveAll(x => x != null && x.EndsWith(slotSuffix, StringComparison.Ordinal));
+            }
+            else
+            {
+                _pool.Remove(chosenName);
+            }
         }
 
         private void ApplyPick(int slot, byte index)
@@ -450,12 +499,7 @@ namespace DraftMode
             }
             else if (chosenName != null && chosenName != "__RANDOM__")
             {
-                int pipeIdx = chosenName.IndexOf('|');
-                if (pipeIdx >= 0)
-                {
-                    string slotSuffix = chosenName.Substring(pipeIdx);
-                    _pool.RemoveAll(x => x != null && x.EndsWith(slotSuffix, StringComparison.Ordinal));
-                }
+                RemovePickedSeatFromPool(chosenName);
             }
 
             ushort chosenRoleId;
@@ -475,7 +519,7 @@ namespace DraftMode
                 if (remaining.Count > 0)
                 {
                     var randomName = remaining[_rng.NextInt(remaining.Count)];
-                    _pool.Remove(randomName);
+                    RemovePickedSeatFromPool(randomName);
                     chosenRoleId = DraftRolePool.ChooseRepresentativeRoleId(new List<string> { randomName });
                 }
                 else
@@ -484,8 +528,37 @@ namespace DraftMode
                     // BuildPoolFromRoleList guarantees every slot contributes at least
                     // one entry, but if it still happens, don't leave the player with
                     // no role -- grab any currently-usable role instead of returning 0.
+                    // This still has to respect each role's max count -- otherwise it can
+                    // (and did) hand the same max-1 role to a second player.
+                    var assignedCounts = new Dictionary<ushort, int>();
+                    bool recruiterAlreadyAssigned = false;
+                    bool nonRecruiterImpAlreadyAssigned = false;
+                    foreach (var s in DraftManager.GetAllStates())
+                    {
+                        if (s.HasPicked && s.ChosenRoleId != 0)
+                        {
+                            assignedCounts[s.ChosenRoleId] = assignedCounts.GetValueOrDefault(s.ChosenRoleId) + 1;
+
+                            var rn = DraftRolePool.GetRoleNameFromId(s.ChosenRoleId) ?? s.ForcedRoleName;
+                            if (!string.IsNullOrEmpty(rn))
+                            {
+                                if (DraftRolePool.IsRecruiterRoleName(rn)) recruiterAlreadyAssigned = true;
+                                else if (DraftRolePool.IsImpostorRoleName(rn)) nonRecruiterImpAlreadyAssigned = true;
+                            }
+                        }
+                    }
+
                     var anyNames = DraftRolePool.ResolveBucketToRoleNames(nameof(RoleListOption.Any))
-                        ?.Where(n => !string.IsNullOrWhiteSpace(n)).ToList() ?? new List<string>();
+                        ?.Where(n => !string.IsNullOrWhiteSpace(n))
+                        .Where(n =>
+                        {
+                            var id = DraftRolePool.ChooseRepresentativeRoleId(new List<string> { n });
+                            if (assignedCounts.GetValueOrDefault(id) >= DraftRolePool.GetMaxCountForRoleName(n)) return false;
+                            if (recruiterAlreadyAssigned && DraftRolePool.IsImpostorRoleName(n)) return false;
+                            if (nonRecruiterImpAlreadyAssigned && DraftRolePool.IsRecruiterRoleName(n)) return false;
+                            return true;
+                        })
+                        .ToList() ?? new List<string>();
                     if (anyNames.Count > 0)
                     {
                         var fallbackName = anyNames[_rng.NextInt(anyNames.Count)];
