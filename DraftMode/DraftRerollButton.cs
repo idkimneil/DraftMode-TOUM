@@ -58,7 +58,8 @@ public sealed class DraftRerollButton : TownOfUsButton
 
     public override bool CanUse()
     {
-        return DraftManager.GetStateForPlayer(PlayerControl.LocalPlayer.PlayerId).IsPickingNow && DraftManager.IsDraftActive && !Disabled && MaxUses > 0 && UsesLeft>0;
+        var state = DraftManager.GetStateForPlayer(PlayerControl.LocalPlayer.PlayerId);
+        return state != null && state.IsPickingNow && DraftManager.IsDraftActive && !Disabled && MaxUses > 0 && UsesLeft>0;
     }
 
     protected override void OnClick()
