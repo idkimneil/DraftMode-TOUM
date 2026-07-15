@@ -257,14 +257,7 @@ public static class DraftNetworkHelper
         var count = Math.Min(maxOffered, roleIds.Count);
         for (int i = 0; i < count; i++)
         {
-            if (roleIds[i] > 1000)
-            {
-                padded[i] = 0;
-            }
-            else
-            {
-                padded[i] = roleIds[i];
-            }
+            padded[i] = roleIds[i];
         }
 
         DraftRpcs.RpcAnnounceTurn(PlayerControl.LocalPlayer, turnNumber, slot, playerId, (byte)count,

@@ -2,6 +2,7 @@ using System.Text;
 using System.Linq;
 using HarmonyLib;
 using MiraAPI.GameOptions;
+using TMPro;
 using UnityEngine;
 using TownOfUs;
 using TownOfUs.Patches;
@@ -20,15 +21,72 @@ namespace DraftMode
 
             var draftOpts = OptionGroupSingleton<DraftOptions>.Instance;
             if (draftOpts == null || !draftOpts.IsDraftMode.Value) return;
-            HudManagerPatches.IsHoveringRoleList = false;
             var roleList = HudManagerPatches.RoleList;
             var tmp = HudManagerPatches.RoleListTextComp;
             if (roleList == null || tmp == null) return;
+
+            EnsureHoverComponent(instance, tmp);
+
             if (HudManagerPatches.IsHoveringRoleList) return;
-            
+
             tmp.text = BuildDraftSettingsText();
             roleList.SetActive(true);
         }
+
+        private static DraftRoleListHoverComponent _hoverComp;
+        private static void EnsureHoverComponent(HudManager instance, TextMeshPro tmp)
+        {
+            if (_hoverComp == null)
+            {
+                _hoverComp = instance.gameObject.GetComponent<DraftRoleListHoverComponent>()
+                             ?? instance.gameObject.AddComponent<DraftRoleListHoverComponent>();
+            }
+            _hoverComp.TextTarget = tmp;
+        }
+
+        public static bool IsShowingDraftList()
+        {
+            if (!LobbyBehaviour.Instance || DraftSidebarManager.IsActive) return false;
+            var draftOpts = OptionGroupSingleton<DraftOptions>.Instance;
+            return draftOpts != null && draftOpts.IsDraftMode.Value;
+        }
+
+        public static bool IsShowingRoleListPool()
+        {
+            if (!IsShowingDraftList()) return false;
+            return OptionGroupSingleton<DraftOptions>.Instance.UseRoleListForPool.Value;
+        }
+
+        public static TownOfUs.Options.RoleListOption? BucketForLine(int line)
+        {
+            var slotIndex = line - 2;
+            if (slotIndex < 0) return null;
+
+            var list = OptionGroupSingleton<RoleDraftRoleListOptions>.Instance;
+            var slotValue = slotIndex switch
+            {
+                0 => list.Slot1.Value,
+                1 => list.Slot2.Value,
+                2 => list.Slot3.Value,
+                3 => list.Slot4.Value,
+                4 => list.Slot5.Value,
+                5 => list.Slot6.Value,
+                6 => list.Slot7.Value,
+                7 => list.Slot8.Value,
+                8 => list.Slot9.Value,
+                9 => list.Slot10.Value,
+                10 => list.Slot11.Value,
+                11 => list.Slot12.Value,
+                12 => list.Slot13.Value,
+                13 => list.Slot14.Value,
+                14 => list.Slot15.Value,
+                _ => (RoleListOption)(-1)
+            };
+
+            if ((int)slotValue < 0) return null;
+            return (TownOfUs.Options.RoleListOption)(int)slotValue;
+        }
+
         private static string AnimatedTitle()
         {
             float t = Time.time;
@@ -78,11 +136,6 @@ namespace DraftMode
         {
             var list = OptionGroupSingleton<RoleDraftRoleListOptions>.Instance;
             const int hardCap = 15;
-
-            // Only show as many slots as there are players currently in the lobby --
-            // this is re-evaluated every call (the patch fires on every HUD update
-            // while in the lobby), so the list grows/shrinks live as players join or
-            // leave without needing a separate join/leave hook.
             int playerCount = PlayerControl.AllPlayerControls?.ToArray()
                 .Count(p => p != null && !p.Data.Disconnected) ?? 0;
             int maxSlots = Mathf.Clamp(playerCount, 0, hardCap);

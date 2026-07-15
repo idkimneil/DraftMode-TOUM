@@ -303,10 +303,19 @@ public static class DraftSidebarDeactivateOnOverlayHidden
         [HarmonyPrefix]
         public static bool Prefix()
         {
-            if (!DraftManager.IsDraftActive) return true;
+            if (DraftManager.IsDraftActive)
+            {
+                HudManagerPatches.IsHoveringRoleList = false;
+                return false;
+            }
 
-            HudManagerPatches.IsHoveringRoleList = false;
-            return false;
+            if (DraftLobbyRoleListPatch.IsShowingDraftList())
+            {
+                HudManagerPatches.IsHoveringRoleList = false;
+                return false;
+            }
+
+            return true;
         }
     }
 }
