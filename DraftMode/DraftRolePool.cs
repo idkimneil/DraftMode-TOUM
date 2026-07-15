@@ -286,6 +286,9 @@ namespace DraftMode
                     roles.AddRange(MiscUtils.GetRegisteredRoles(alignment).Where(IsUsableRole));
             }
 
+            if (bucket is RoleListOption.ImpSupport or RoleListOption.ImpRandom)
+                roles.AddRange(GetUncategorizedImpostors());
+
             var unique = new List<RoleBehaviour>();
             foreach (var role in roles)
             {
@@ -295,6 +298,24 @@ namespace DraftMode
             }
 
             return unique;
+        }
+
+        private static readonly RoleAlignment[] KnownImpSubAlignments =
+        [
+            RoleAlignment.ImpostorConcealing, RoleAlignment.ImpostorKilling,
+            RoleAlignment.ImpostorPower, RoleAlignment.ImpostorSupport
+        ];
+
+        private static IEnumerable<RoleBehaviour> GetUncategorizedImpostors()
+        {
+            var known = new HashSet<RoleBehaviour>();
+            foreach (var alignment in KnownImpSubAlignments)
+                foreach (var role in MiscUtils.GetRegisteredRoles(alignment))
+                    known.Add(role);
+
+            return MiscUtils.SpawnableRoles
+                .Where(IsUsableRole)
+                .Where(r => r.IsImpostor() && !known.Contains(r));
         }
 
         private static bool IsUsableRole(RoleBehaviour role)

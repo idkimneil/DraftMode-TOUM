@@ -124,12 +124,14 @@ namespace DraftMode
                     var slot = _slotOrder[_turnIndex + i];
                     if (SetupTurn(slot))
                         activeSlots.Add(slot);
+                    else
+                        ApplyPick(slot, 255);
                 }
 
                 if (activeSlots.Count == 0)
                 {
                     _turnIndex += Math.Max(1, batchSize);
-                    yield return new WaitForSeconds(1f);
+                    yield return null;
                     continue;
                 }
 
@@ -146,9 +148,10 @@ namespace DraftMode
             }
 
             MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, "[DraftEngine] Draft complete");
+            yield return CoBackfillSpecialShortfall();
             FinishDraft();
         }
-        private HashSet<string> GetAvoidNamesForTurn(int excludeSlot)
+        private HashSet<string> GetAvoidNamesForTurn(int excludeSlot, bool ignoreConcurrentOffers = false)
         {
             var avoid = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -189,7 +192,7 @@ namespace DraftMode
                 foreach (var n in kvp.Value)
                 {
                     if (string.IsNullOrEmpty(n) || n == "__RANDOM__") continue;
-                    avoid.Add(n);
+                    if (!ignoreConcurrentOffers) avoid.Add(n);
 
                     if (DraftRolePool.IsImpostorRoleName(n)) hasImp = true;
                     if (DraftRolePool.IsNeutralRoleName(n)) hasNeut = true;
@@ -304,6 +307,11 @@ namespace DraftMode
 
                 var avoidNames = GetAvoidNamesForTurn(slot);
                 var offers = DraftPoolBuilder.GetOfferedRoles(_pool, _rng, avoidNames);
+                if (offers.Count == 0)
+                {
+                    var relaxedAvoid = GetAvoidNamesForTurn(slot, ignoreConcurrentOffers: true);
+                    offers = DraftPoolBuilder.GetOfferedRoles(_pool, _rng, relaxedAvoid);
+                }
                 _currentOffersBySlot[slot] = offers;
                 MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"[DraftEngine] Generated {offers.Count} role offers for slot {slot}");
 
@@ -416,6 +424,102 @@ namespace DraftMode
             }
         }
 
+        [HideFromIl2Cpp]
+        private IEnumerator CoBackfillSpecialShortfall()
+        {
+            var roleOpts = OptionGroupSingleton<DraftOptions>.Instance;
+            int maxImps;
+            int maxNeuts;
+            if (roleOpts != null && !roleOpts.UseRoleListForPool)
+            {
+                var impOpts = OptionGroupSingleton<RoleDraftImpOptions>.Instance;
+                var neutOpts = OptionGroupSingleton<RoleDraftNeutOptions>.Instance;
+                maxImps = impOpts != null ? Math.Max(0, (int)impOpts.MaxImpostors.Value) : 0;
+                maxNeuts = neutOpts != null ? Math.Max(0, (int)neutOpts.MaxNeutrals.Value) : 0;
+            }
+            else
+            {
+                maxImps = _totalImpostorGroupsInPool;
+                maxNeuts = _totalNeutralGroupsInPool;
+            }
+
+            int currentImps = 0;
+            int currentNeuts = 0;
+            bool recruiterAssigned = false;
+            bool nonRecruiterImpAssigned = false;
+
+            foreach (var s in DraftManager.GetAllStates())
+            {
+                if (!s.HasPicked || s.ChosenRoleId == 0) continue;
+                var roleName = DraftRolePool.GetRoleNameFromId(s.ChosenRoleId) ?? s.ForcedRoleName;
+                if (string.IsNullOrEmpty(roleName)) continue;
+
+                if (DraftRolePool.IsImpostorRoleName(roleName)) currentImps++;
+                if (DraftRolePool.IsNeutralRoleName(roleName)) currentNeuts++;
+                if (DraftRolePool.IsRecruiterRoleName(roleName)) recruiterAssigned = true;
+                else if (DraftRolePool.IsImpostorRoleName(roleName)) nonRecruiterImpAssigned = true;
+            }
+
+            int impShortfall = Math.Max(0, maxImps - currentImps);
+            int neutShortfall = Math.Max(0, maxNeuts - currentNeuts);
+            if (impShortfall == 0 && neutShortfall == 0) yield break;
+
+            var candidateSlots = DraftManager.GetAllStates()
+                .Where(s => s.HasPicked && s.ChosenRoleId != 0)
+                .Where(s =>
+                {
+                    var n = DraftRolePool.GetRoleNameFromId(s.ChosenRoleId) ?? s.ForcedRoleName;
+                    return !string.IsNullOrEmpty(n) && !DraftRolePool.IsImpostorRoleName(n) && !DraftRolePool.IsNeutralRoleName(n);
+                })
+                .Select(s => s.SlotNumber)
+                .OrderBy(_ => _rng.NextInt(int.MaxValue))
+                .ToList();
+
+            foreach (var slot in candidateSlots)
+            {
+                if (impShortfall == 0 && neutShortfall == 0) break;
+
+                var remaining = _pool.Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
+                var backfillNames = remaining.Where(n =>
+                {
+                    bool isImp = DraftRolePool.IsImpostorRoleName(n);
+                    bool isNeut = DraftRolePool.IsNeutralRoleName(n);
+                    if (isImp && impShortfall > 0)
+                    {
+                        if (DraftRolePool.IsRecruiterRoleName(n) && nonRecruiterImpAssigned) return false;
+                        if (!DraftRolePool.IsRecruiterRoleName(n) && recruiterAssigned) return false;
+                        return true;
+                    }
+                    if (isNeut && neutShortfall > 0) return true;
+                    return false;
+                }).ToList();
+
+                if (backfillNames.Count == 0) continue;
+
+                var chosenName = backfillNames[_rng.NextInt(backfillNames.Count)];
+                RemovePickedSeatFromPool(chosenName);
+                var chosenRoleId = DraftRolePool.ChooseRepresentativeRoleId(new List<string> { chosenName });
+
+                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info,
+                    $"[DraftEngine] Backfilling shortfall: reassigning slot {slot} to '{chosenName}' (roleId {chosenRoleId})");
+
+                DraftNetworkHelper.BroadcastPickConfirmed(slot, chosenRoleId);
+
+                if (DraftRolePool.IsImpostorRoleName(chosenName))
+                {
+                    impShortfall--;
+                    if (DraftRolePool.IsRecruiterRoleName(chosenName)) recruiterAssigned = true;
+                    else nonRecruiterImpAssigned = true;
+                }
+                else if (DraftRolePool.IsNeutralRoleName(chosenName))
+                {
+                    neutShortfall--;
+                }
+            }
+
+            yield return null;
+        }
+
         private static bool IsBotOrDisconnected(byte playerId)
         {
             var player = PlayerControl.AllPlayerControls?.ToArray()
@@ -514,11 +618,10 @@ namespace DraftMode
                 // impostor/neutral count past the configured max.
                 var avoidForSlot = GetAvoidNamesForTurn(slot);
                 var eligibleRemaining = remaining.Where(r => !avoidForSlot.Contains(r)).ToList();
-                if (eligibleRemaining.Count > 0) remaining = eligibleRemaining;
 
-                if (remaining.Count > 0)
+                if (eligibleRemaining.Count > 0)
                 {
-                    var randomName = remaining[_rng.NextInt(remaining.Count)];
+                    var randomName = eligibleRemaining[_rng.NextInt(eligibleRemaining.Count)];
                     RemovePickedSeatFromPool(randomName);
                     chosenRoleId = DraftRolePool.ChooseRepresentativeRoleId(new List<string> { randomName });
                 }
@@ -533,6 +636,8 @@ namespace DraftMode
                     var assignedCounts = new Dictionary<ushort, int>();
                     bool recruiterAlreadyAssigned = false;
                     bool nonRecruiterImpAlreadyAssigned = false;
+                    int currentImps = 0;
+                    int currentNeuts = 0;
                     foreach (var s in DraftManager.GetAllStates())
                     {
                         if (s.HasPicked && s.ChosenRoleId != 0)
@@ -544,20 +649,60 @@ namespace DraftMode
                             {
                                 if (DraftRolePool.IsRecruiterRoleName(rn)) recruiterAlreadyAssigned = true;
                                 else if (DraftRolePool.IsImpostorRoleName(rn)) nonRecruiterImpAlreadyAssigned = true;
+
+                                if (DraftRolePool.IsImpostorRoleName(rn)) currentImps++;
+                                else if (DraftRolePool.IsNeutralRoleName(rn)) currentNeuts++;
                             }
                         }
                     }
 
+                    foreach (var kvp in _currentOffersBySlot)
+                    {
+                        if (kvp.Key == slot) continue;
+                        foreach (var n in kvp.Value)
+                        {
+                            if (string.IsNullOrEmpty(n) || n == "__RANDOM__") continue;
+                            if (DraftRolePool.IsRecruiterRoleName(n)) recruiterAlreadyAssigned = true;
+                            else if (DraftRolePool.IsImpostorRoleName(n)) nonRecruiterImpAlreadyAssigned = true;
+                        }
+                    }
+
+                    var roleOptsFallback = OptionGroupSingleton<DraftOptions>.Instance;
+                    int maxImps;
+                    int maxNeuts;
+                    if (roleOptsFallback != null && !roleOptsFallback.UseRoleListForPool)
+                    {
+                        var impOptsFallback = OptionGroupSingleton<RoleDraftImpOptions>.Instance;
+                        var neutOptsFallback = OptionGroupSingleton<RoleDraftNeutOptions>.Instance;
+                        maxImps = impOptsFallback != null ? Math.Max(0, (int)impOptsFallback.MaxImpostors.Value) : int.MaxValue;
+                        maxNeuts = neutOptsFallback != null ? Math.Max(0, (int)neutOptsFallback.MaxNeutrals.Value) : int.MaxValue;
+                    }
+                    else
+                    {
+                        maxImps = _totalImpostorGroupsInPool;
+                        maxNeuts = _totalNeutralGroupsInPool;
+                    }
+
+                    bool slotEligibleForSpecial = _specialEligibleSlots.Contains(slot);
+
+                    Func<string, bool> fallbackFilter = n =>
+                    {
+                        var id = DraftRolePool.ChooseRepresentativeRoleId(new List<string> { n });
+                        if (assignedCounts.GetValueOrDefault(id) >= DraftRolePool.GetMaxCountForRoleName(n)) return false;
+                        if (recruiterAlreadyAssigned && DraftRolePool.IsImpostorRoleName(n)) return false;
+                        if (nonRecruiterImpAlreadyAssigned && DraftRolePool.IsRecruiterRoleName(n)) return false;
+
+                        bool isImp = DraftRolePool.IsImpostorRoleName(n);
+                        bool isNeut = DraftRolePool.IsNeutralRoleName(n);
+                        if ((isImp || isNeut) && !slotEligibleForSpecial) return false;
+                        if (isImp && currentImps >= maxImps) return false;
+                        if (isNeut && currentNeuts >= maxNeuts) return false;
+                        return true;
+                    };
+
                     var anyNames = DraftRolePool.ResolveBucketToRoleNames(nameof(RoleListOption.Any))
                         ?.Where(n => !string.IsNullOrWhiteSpace(n))
-                        .Where(n =>
-                        {
-                            var id = DraftRolePool.ChooseRepresentativeRoleId(new List<string> { n });
-                            if (assignedCounts.GetValueOrDefault(id) >= DraftRolePool.GetMaxCountForRoleName(n)) return false;
-                            if (recruiterAlreadyAssigned && DraftRolePool.IsImpostorRoleName(n)) return false;
-                            if (nonRecruiterImpAlreadyAssigned && DraftRolePool.IsRecruiterRoleName(n)) return false;
-                            return true;
-                        })
+                        .Where(fallbackFilter)
                         .ToList() ?? new List<string>();
                     if (anyNames.Count > 0)
                     {
