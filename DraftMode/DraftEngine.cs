@@ -148,6 +148,14 @@ namespace DraftMode
             }
 
             MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, "[DraftEngine] Draft complete");
+
+            foreach (var s in DraftManager.GetAllStates())
+            {
+                if (s.HasPicked) continue;
+                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Warning, $"[DraftEngine] Slot {s.SlotNumber} never picked, applying fallback pick before finishing");
+                ApplyPick(s.SlotNumber, 255);
+            }
+
             yield return CoBackfillSpecialShortfall();
             FinishDraft();
         }
@@ -169,11 +177,6 @@ namespace DraftMode
                     {
                         if (DraftRolePool.IsImpostorRoleName(roleName)) currentImps++;
                         else if (DraftRolePool.IsNeutralRoleName(roleName)) currentNeuts++;
-
-                        // Recruiter (DivanMods) is a single impostor at spawn that later
-                        // recruits a teammate -- it can never coexist with a normally
-                        // spawned impostor, in either order, or drafted players end up
-                        // missing the role they picked.
                         if (DraftRolePool.IsRecruiterRoleName(roleName)) recruiterReserved = true;
                         else if (DraftRolePool.IsImpostorRoleName(roleName)) nonRecruiterImpReserved = true;
                     }
@@ -221,11 +224,6 @@ namespace DraftMode
             }
             else
             {
-                // Role List mode has no MaxImpostors/MaxNeutrals option group -- the
-                // equivalent caps are however many impostor/neutral-tagged groups were
-                // actually built into the pool from the role list slots, not the lobby's
-                // base impostor count (which is a separate, unrelated setting and can be
-                // higher than the number of impostor slots the role list actually has).
                 maxImps = _totalImpostorGroupsInPool;
                 maxNeuts = _totalNeutralGroupsInPool;
             }
@@ -299,19 +297,37 @@ namespace DraftMode
             return groups.Values.Count(v => v);
         }
 
+        private List<string> GenerateOffersForSlot(int slot)
+        {
+            var avoidNames = GetAvoidNamesForTurn(slot);
+            var offers = DraftPoolBuilder.GetOfferedRoles(_pool, _rng, avoidNames);
+            if (offers.Count == 0)
+            {
+                var relaxedAvoid = GetAvoidNamesForTurn(slot, ignoreConcurrentOffers: true);
+                offers = DraftPoolBuilder.GetOfferedRoles(_pool, _rng, relaxedAvoid);
+            }
+
+            if (offers.Count == 0)
+            {
+                var avoidBare = new HashSet<string>(
+                    avoidNames.Select(a => a.IndexOf('|') is var p && p >= 0 ? a.Substring(0, p) : a),
+                    StringComparer.OrdinalIgnoreCase);
+                var catalog = DraftRolePool.ResolveBucketToRoleNames(nameof(RoleListOption.Any))
+                    ?.Where(n => !string.IsNullOrWhiteSpace(n) && !avoidBare.Contains(n))
+                    .ToList() ?? new List<string>();
+                offers = DraftPoolBuilder.GetOfferedRoles(catalog, _rng, null!);
+            }
+
+            return offers;
+        }
+
         private bool SetupTurn(int slot)
         {
             try
             {
                 MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"[DraftEngine] Turn {_currentTurnNumber}: Starting turn for slot {slot}");
 
-                var avoidNames = GetAvoidNamesForTurn(slot);
-                var offers = DraftPoolBuilder.GetOfferedRoles(_pool, _rng, avoidNames);
-                if (offers.Count == 0)
-                {
-                    var relaxedAvoid = GetAvoidNamesForTurn(slot, ignoreConcurrentOffers: true);
-                    offers = DraftPoolBuilder.GetOfferedRoles(_pool, _rng, relaxedAvoid);
-                }
+                var offers = GenerateOffersForSlot(slot);
                 _currentOffersBySlot[slot] = offers;
                 MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"[DraftEngine] Generated {offers.Count} role offers for slot {slot}");
 
@@ -543,16 +559,16 @@ namespace DraftMode
          public void RequestReroll(byte playerId)
         {
             if (!_running) return;
-            if (_turnIndex >= _slotOrder.Count) return;
 
-            var currentSlot = _slotOrder[_turnIndex];
-            var state = DraftManager.GetStateForSlot(currentSlot);
-            if (state == null || state.PlayerId != playerId || state.HasPicked) return;
+            var state = DraftManager.GetStateForPlayer(playerId);
+            if (state == null || state.HasPicked || !state.IsPickingNow) return;
+
+            var currentSlot = state.SlotNumber;
+            if (!_currentOffersBySlot.ContainsKey(currentSlot)) return;
 
             MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"[DraftEngine] Reroll requested by player {playerId}");
 
-            var avoidNames = GetAvoidNamesForTurn(currentSlot);
-            _currentOffers = DraftPoolBuilder.GetOfferedRoles(_pool, _rng, avoidNames);
+            _currentOffers = GenerateOffersForSlot(currentSlot);
             _currentOffersBySlot[currentSlot] = _currentOffers;
             var pickedRoleCandidates = new List<ushort>();
             foreach (var roleName in _currentOffers)
@@ -610,12 +626,6 @@ namespace DraftMode
             if (chosenName == "__RANDOM__" || chosenName == null)
             {
                 var remaining = _pool.Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
-
-                // Random/auto-picks (timeout, bot/disconnected, or a collision fallback)
-                // must respect the same impostor/neutral caps and special-role eligibility
-                // as normal offers -- otherwise an auto-pick can hand an impostor or
-                // neutral role to a slot that was never eligible for one, or push the
-                // impostor/neutral count past the configured max.
                 var avoidForSlot = GetAvoidNamesForTurn(slot);
                 var eligibleRemaining = remaining.Where(r => !avoidForSlot.Contains(r)).ToList();
 
@@ -627,12 +637,6 @@ namespace DraftMode
                 }
                 else
                 {
-                    // Pool is completely exhausted. This should be rare now that
-                    // BuildPoolFromRoleList guarantees every slot contributes at least
-                    // one entry, but if it still happens, don't leave the player with
-                    // no role -- grab any currently-usable role instead of returning 0.
-                    // This still has to respect each role's max count -- otherwise it can
-                    // (and did) hand the same max-1 role to a second player.
                     var assignedCounts = new Dictionary<ushort, int>();
                     bool recruiterAlreadyAssigned = false;
                     bool nonRecruiterImpAlreadyAssigned = false;
