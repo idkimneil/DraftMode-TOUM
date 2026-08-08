@@ -1,11 +1,8 @@
 using AmongUs.GameOptions;
 using MiraAPI.Roles;
 using MiraAPI.Utilities;
-using DraftMode.Options;
+using TownOfUs.Options;
 using TownOfUs.Roles;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 
 
 namespace DraftMode
@@ -17,35 +14,91 @@ namespace DraftMode
         public static Func<ushort, string> NameResolver;
 
         private static readonly Dictionary<string, ushort> RoleNameToIdCache = new(StringComparer.Ordinal);
+        private static readonly Dictionary<string, List<string>> BucketToNamesCache = new(StringComparer.OrdinalIgnoreCase);
 
-        public static void ClearNameCache() => RoleNameToIdCache.Clear();
-
-        private static void CacheRoleId(string roleName, ushort roleId)
-        {
-            if (string.IsNullOrEmpty(roleName) || roleId == 0) return;
-            RoleNameToIdCache[roleName] = roleId;
-        }
+        public static void ClearNameCache()
+    {
+        RoleNameToIdCache.Clear();
+        BucketToNamesCache.Clear();
+    }
 
         public static List<string> ResolveBucketToRoleNames(string bucket)
         {
-            if (ResolveDelegate != null)
-            {
-                try { return ResolveDelegate(bucket) ?? new List<string>(); }
-                catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"DraftRolePool.ResolveDelegate threw: {e}"); }
-            }
-
             if (string.IsNullOrWhiteSpace(bucket)) return new List<string>();
 
-            if (TryResolveBucketToConcreteRoles(bucket, out var resolvedNames))
-                return resolvedNames;
+            if (BucketToNamesCache.TryGetValue(bucket, out var cached))
+                return new List<string>(cached);
 
-            var separators = new[] { '|', ';', ',' };
-            if (bucket.IndexOfAny(separators) >= 0)
+            List<string> result;
+            if (ResolveDelegate != null)
             {
-                return bucket.Split(separators, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+                try
+                {
+                    result = ResolveDelegate(bucket) ?? new List<string>();
+                }
+                catch (Exception e)
+                {
+                    MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"DraftRolePool.ResolveDelegate threw: {e}");
+                    result = new List<string>();
+                }
+            }
+            else if (TryResolveBucketToConcreteRoles(bucket, out var resolvedNames))
+            {
+                result = resolvedNames;
+            }
+            else
+            {
+                var separators = new[] { '|', ';', ',' };
+                if (bucket.IndexOfAny(separators) >= 0)
+                {
+                    result = bucket.Split(separators, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+                }
+                else
+                {
+                    result = new List<string> { bucket };
+                }
             }
 
-            return new List<string> { bucket };
+            result = TrimEmptyNames(result);
+
+            BucketToNamesCache[bucket] = new List<string>(result);
+            return new List<string>(result);
+        }
+
+        public static ushort ResolveRoleIdFromName(string roleName)
+        {
+            if (string.IsNullOrWhiteSpace(roleName)) return 0;
+
+            var baseName = roleName;
+            int pipeIdx = baseName.IndexOf('|');
+            if (pipeIdx >= 0) baseName = baseName.Substring(0, pipeIdx);
+
+            if (RoleNameToIdCache.TryGetValue(baseName, out var cachedId) && cachedId != 0)
+                return cachedId;
+
+            if (ushort.TryParse(baseName, out var directId))
+            {
+                try
+                {
+                    var directRole = MiscUtils.GetRegisteredRole((RoleTypes)directId);
+                    if (directRole != null)
+                    {
+                        CacheRoleId(baseName, directId);
+                        return directId;
+                    }
+                }
+                catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+            }
+
+            var resolved = FindRoleByName(baseName);
+            if (resolved != null)
+            {
+                var resolvedId = (ushort)resolved.Role;
+                CacheRoleId(baseName, resolvedId);
+                return resolvedId;
+            }
+
+            return 0;
         }
 
         public static ushort ChooseRepresentativeRoleId(List<string> roleNames)
@@ -61,32 +114,17 @@ namespace DraftMode
                         var id = IdResolver(nm);
                         if (id != 0) return id;
                     }
-                    catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+                    catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
                 }
             }
 
             foreach (var nm in roleNames)
             {
-                if (RoleNameToIdCache.TryGetValue(nm, out var cachedId) && cachedId != 0)
-                    return cachedId;
+                var resolvedId = ResolveRoleIdFromName(nm);
+                if (resolvedId != 0) return resolvedId;
             }
 
-            foreach (var nm in roleNames)
-            {
-                var resolved = FindRoleByName(nm);
-                if (resolved != null)
-                    return (ushort)resolved.Role;
-            }
-
-            var chosen = roleNames[0];
-            int pipeIdx = chosen.IndexOf('|');
-            if (pipeIdx >= 0) chosen = chosen.Substring(0, pipeIdx);
-
-            unchecked
-            {
-                var hash = (uint)chosen.GetHashCode();
-                return (ushort)(hash & 0xFFFF);
-            }
+            return 0;
         }
 
         public static string GetRoleNameFromId(ushort id)
@@ -94,13 +132,13 @@ namespace DraftMode
             if (NameResolver != null)
             {
                 try { return NameResolver(id); }
-                catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+                catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
             }
 
             if (id == 0) return null!;
             try
             {
-                var role = MiscUtils.GetRegisteredRole((RoleTypes)id) ?? RoleManager.Instance?.GetRole((RoleTypes)id);
+                var role = MiscUtils.GetRegisteredRole((RoleTypes)id);
                 return (role?.GetRoleName() ?? role?.NiceName)!;
             }
             catch (Exception) { return null!; }
@@ -125,7 +163,7 @@ namespace DraftMode
                         int count = Math.Max(1, GetRoleCount(role));
                         for (int i = 0; i < count; i++)
                         {
-                            names.Add(((ushort)role!.Role).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                            names.Add(name);
                         }
                     }
                 }
@@ -137,12 +175,14 @@ namespace DraftMode
                     (names[i], names[j]) = (names[j], names[i]);
                 }
 
-                resolvedNames = names;
-                return true;
+                resolvedNames = TrimEmptyNames(names);
+                return resolvedNames.Count > 0;
             }
 
             var directRole = FindRoleByName(bucket);
-            if (directRole != null)
+            if (directRole != null &&
+                directRole.Role != RoleTypes.Impostor &&
+                directRole.Role != RoleTypes.Crewmate)
             {
                 var name = directRole.GetRoleName();
                 if (!string.IsNullOrWhiteSpace(name))
@@ -158,26 +198,56 @@ namespace DraftMode
         public static int GetMaxCountForRoleName(string name)
         {
             var role = FindRoleByName(name);
-            return role != null ? Math.Max(1, GetRoleCount(role)) : 1;
+            return role != null ? Math.Max(1, GetRoleCount(role)) : int.MaxValue;
+        }
+
+        private static void CacheRoleId(string roleName, ushort roleId)
+        {
+            if (string.IsNullOrWhiteSpace(roleName) || roleId == 0) return;
+            RoleNameToIdCache[roleName] = roleId;
         }
 
         public static bool IsImpostorRoleName(string name)
-        {
-            var role = FindRoleByName(name);
-            if (role == null) return false;
+{
+    var role = FindRoleByName(name);
+    return role != null && IsImpostorRole(role);
+}
 
-            return role.IsImpostor();
+public static bool IsImpostorRoleId(ushort id)
+{
+    try
+    {
+        var r = MiscUtils.GetRegisteredRole((RoleTypes)id);
+        return r != null && IsImpostorRole(r);
+    }
+    catch { return false; }
+}
+
+    public static bool IsImpostorRole(RoleBehaviour role)
+    {
+        if (role == null) return false;
+        var alignment = role.GetRoleAlignment();
+        if (
+            alignment == RoleAlignment.ImpostorKilling || 
+            alignment == RoleAlignment.ImpostorConcealing || 
+            alignment == RoleAlignment.ImpostorPower || 
+            alignment == RoleAlignment.ImpostorSupport)
+        {
+            return true;
         }
 
-        public static bool IsRecruiterRoleName(string name)
+        // Fallback for native TeamType in case alignment isn't registered
+        return role.TeamType == RoleTeamTypes.Impostor;
+    }
+        public static bool IsExclusiveImpostorRoleName(string name)
         {
             var role = FindRoleByName(name);
-            if (role == null) return false;
+            return role != null && DraftExclusiveImpostorRoles.IsRegistered(role.Role);
+        }
 
-            var roleName = role.GetRoleName();
-            if (string.IsNullOrWhiteSpace(roleName)) return false;
-
-            return NormalizeName(roleName) == "recruiter";
+        public static bool IsExclusiveImpostorRoleId(ushort id)
+        {
+            return DraftExclusiveImpostorRoles.IsRegistered(id);
         }
 
         public static bool IsNeutralRoleName(string name)
@@ -187,6 +257,43 @@ namespace DraftMode
 
             return role.IsNeutral();
         }
+        
+
+        public static bool IsNeutralRoleId(ushort id)
+        {
+            try
+            {
+                var r = MiscUtils.GetRegisteredRole((RoleTypes)id);
+                return r != null && r.IsNeutral();
+            }
+            catch { return false; }
+        }
+
+        public static bool IsImpostorRoleListOption(RoleListOption opt) => opt switch
+        {
+            RoleListOption.ImpConceal or
+            RoleListOption.ImpKilling or
+            RoleListOption.ImpPower or
+            RoleListOption.ImpSupport or
+            RoleListOption.ImpCommon or
+            RoleListOption.ImpSpecial or
+            RoleListOption.ImpRandom => true,
+            _ => false
+        };
+
+        public static bool IsNeutralRoleListOption(RoleListOption opt) => opt switch
+        {
+            RoleListOption.NeutBenign or
+            RoleListOption.NeutEvil or
+            RoleListOption.NeutKilling or
+            RoleListOption.NeutOutlier or
+            RoleListOption.NeutCommon or
+            RoleListOption.NeutSpecial or
+            RoleListOption.NeutWildcard or
+            RoleListOption.NeutRandom => true,
+            _ => false
+        };
+
 
         private static RoleBehaviour FindRoleByName(string name)
         {
@@ -198,10 +305,10 @@ namespace DraftMode
             {
                 try
                 {
-                    var r = MiscUtils.GetRegisteredRole((RoleTypes)id) ?? RoleManager.Instance?.GetRole((RoleTypes)id);
+                    var r = MiscUtils.GetRegisteredRole((RoleTypes)id);
                     if (r != null) return r;
                 }
-                catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+                catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
             }
 
             var normalized = NormalizeName(name);
@@ -230,10 +337,10 @@ namespace DraftMode
             if (string.IsNullOrWhiteSpace(bucket)) return false;
 
             var normalizedBucket = NormalizeName(bucket);
-            for (var i = 0; i < DraftOptions.OptionStrings?.Length; i++)
+            for (var i = 0; i < RoleOptions.OptionStrings?.Length; i++)
             {
-                if (DraftOptions.OptionStrings[i] == null) continue;
-                if (NormalizeName(DraftOptions.OptionStrings[i]) == normalizedBucket)
+                if (RoleOptions.OptionStrings[i] == null) continue;
+                if (NormalizeName(RoleOptions.OptionStrings[i]) == normalizedBucket)
                 {
                     roleListOption = (RoleListOption)i;
                     return true;
@@ -241,6 +348,11 @@ namespace DraftMode
             }
 
             return Enum.TryParse<RoleListOption>(bucket, true, out roleListOption);
+        }
+
+        private static List<string> TrimEmptyNames(IEnumerable<string> names)
+        {
+            return names?.Where(n => !string.IsNullOrWhiteSpace(n)).ToList() ?? new List<string>();
         }
 
         private static List<RoleBehaviour> GetRolesForBucket(RoleListOption bucket)
@@ -317,13 +429,25 @@ namespace DraftMode
                 .Where(IsUsableRole)
                 .Where(r => r.IsImpostor() && !known.Contains(r));
         }
+        public static ushort GetAnyUsableRoleId()
+        {
+            var role = MiscUtils.SpawnableRoles.FirstOrDefault(IsUsableRole);
+            if (role != null) return (ushort)role.Role;
+
+            role = MiscUtils.AllRoles.FirstOrDefault(r => r != null && IsUsableRole(r));
+            return role != null ? (ushort)role.Role : (ushort)0;
+        }
 
         private static bool IsUsableRole(RoleBehaviour role)
         {
             if (!role) return false;
             if (role.IsDead)
                 return false;
-            if (role is ITownOfUsRole touRole && (touRole.Configuration.HideSettings || touRole.RoleAlignment > RoleAlignment.GameOutlier))
+            if (role.Role == RoleTypes.Crewmate)
+                return false;
+            if (role.Role == AmongUs.GameOptions.RoleTypes.Impostor)
+                return false;
+            if (role is ITownOfUsRole touRole && (!touRole.IsDraftable || touRole.RoleAlignment > RoleAlignment.GameOutlier))
                 return false;
 
             return role.GetRoleName() is { Length: > 0 } && CustomRoleUtils.CanSpawnOnCurrentMode(role) && IsRoleEnabled(role);
@@ -344,18 +468,18 @@ namespace DraftMode
                 }
                 else
                 {
-                    var RoleOptions = GameOptionsManager.Instance?.CurrentGameOptions?.RoleOptions;
-                    if (RoleOptions != null)
+                    var roleOptions = GameOptionsManager.Instance?.CurrentGameOptions?.RoleOptions;
+                    if (roleOptions != null)
                     {
-                        int count = RoleOptions.GetNumPerGame(role.Role);
-                        int chance = RoleOptions.GetChancePerGame(role.Role);
+                        int count = roleOptions.GetNumPerGame(role.Role);
+                        int chance = roleOptions.GetChancePerGame(role.Role);
                         return count > 0 && chance > 0;
                     }
                 }
             }
             catch (Exception ex)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftRolePool] Exception in IsRoleEnabled for {role.GetType().Name}: {ex}");
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftRolePool] Exception in IsRoleEnabled for {role.GetType().Name}: {ex}");
             }
             return false;
         }
@@ -372,16 +496,16 @@ namespace DraftMode
                 }
                 else
                 {
-                    var RoleOptions = GameOptionsManager.Instance?.CurrentGameOptions?.RoleOptions;
-                    if (RoleOptions != null)
+                    var roleOptions = GameOptionsManager.Instance?.CurrentGameOptions?.RoleOptions;
+                    if (roleOptions != null)
                     {
-                        return RoleOptions.GetChancePerGame(role.Role);
+                        return roleOptions.GetChancePerGame(role.Role);
                     }
                 }
             }
             catch (Exception ex)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftRolePool] Exception in GetRoleChance for {role.GetType().Name}: {ex}");
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftRolePool] Exception in GetRoleChance for {role.GetType().Name}: {ex}");
             }
             return 0;
         }
@@ -405,18 +529,19 @@ namespace DraftMode
                 }
                 else
                 {
-                    var RoleOptions = GameOptionsManager.Instance?.CurrentGameOptions?.RoleOptions;
-                    if (RoleOptions != null)
+                    var roleOptions = GameOptionsManager.Instance?.CurrentGameOptions?.RoleOptions;
+                    if (roleOptions != null)
                     {
-                        return RoleOptions.GetNumPerGame(role.Role);
+                        return roleOptions.GetNumPerGame(role.Role);
                     }
                 }
             }
             catch (Exception ex)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftRolePool] Exception in GetRoleCount for {role.GetType().Name}: {ex}");
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftRolePool] Exception in GetRoleCount for {role.GetType().Name}: {ex}");
             }
             return 0;
         }
     }
 }
+

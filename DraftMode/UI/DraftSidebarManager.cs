@@ -2,11 +2,11 @@ using System.Text;
 using HarmonyLib;
 using MiraAPI.GameOptions;
 using MiraAPI.Utilities;
-using DraftMode.Options;
+using Reactor.Utilities.Extensions;
+using TMPro;
+using TownOfUs.Options;
 using TownOfUs.Patches;
-using TownOfUs.Events;
 using UnityEngine;
-
 
 
 namespace DraftMode
@@ -17,12 +17,14 @@ namespace DraftMode
         private static GameObject    _bannerGo = null!;
         private static string _cachedStaticContent = null!;
         private static int    _cachedPickedCount   = -1;
+        private static int    _cachedDisconnectedCount = -1;
         private static bool   _cachedDraftActive;
 
         public static void Activate()
         {
             _active = true;
-            MiscUtils.LogInfo(TownOfUsEventHandlers.LogLevel.Info, "[DraftSidebar] Activated.");
+            InvalidateCache();
+            MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, "[DraftSidebar] Activated.");
         }
 
         public static void Deactivate()
@@ -31,6 +33,7 @@ namespace DraftMode
             _active = false;
             _cachedStaticContent = null!;
             _cachedPickedCount   = -1;
+            _cachedDisconnectedCount = -1;
             _cachedDraftActive   = false;
 
             if (_bannerGo != null) _bannerGo.SetActive(false);
@@ -45,7 +48,7 @@ namespace DraftMode
 
             HudManagerPatches.IsHoveringRoleList = false;
 
-            MiscUtils.LogInfo(TownOfUsEventHandlers.LogLevel.Info, "[DraftSidebar] Deactivated.");
+            MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, "[DraftSidebar] Deactivated.");
         }
         public static void ClearBannerRef()
         {
@@ -57,15 +60,11 @@ namespace DraftMode
         {
             _cachedStaticContent = null!;
             _cachedPickedCount   = -1;
+            _cachedDisconnectedCount = -1;
             _cachedDraftActive   = false;
         }
-        public static void DrawSidebar()
+        public static void DrawSidebar(TextMeshPro tmp)
         {
-            var roleList = HudManagerPatches.RoleList;
-            var tmp      = HudManagerPatches.RoleListTextComp;
-            if (roleList == null || tmp == null) return;
-
-            roleList.SetActive(true);
             tmp.fontSize           = 3f;
             tmp.fontSizeMin        = 0.5f;
             tmp.fontSizeMax        = 3f;
@@ -83,23 +82,27 @@ namespace DraftMode
                     return _cachedStaticContent;
                 _cachedDraftActive   = draftActive;
                 _cachedPickedCount   = -1;
-                _cachedStaticContent = "\n\n<color=#7A8089><i>Waiting to start...</i></color>";
+                _cachedDisconnectedCount = -1;
+                _cachedStaticContent = $"\n\n<color=#7A8089><i>{TouLocale.GetParsed("TouDraftWaitingToStart", "Waiting to start...")}</i></color>";
                 return _cachedStaticContent;
             }
 
-            int total = 0, picked = 0;
+            int total = 0, picked = 0, disconnected = 0;
             foreach (int slot in DraftManager.TurnOrder)
             {
                 var s = DraftManager.GetStateForSlot(slot);
                 if (s == null) continue;
                 total++;
                 if (s.HasPicked) picked++;
+                if (DraftManager.IsPlayerDisconnected(s.PlayerId)) disconnected++;
             }
-            if (draftActive == _cachedDraftActive && picked == _cachedPickedCount && _cachedStaticContent != null)
+            if (draftActive == _cachedDraftActive && picked == _cachedPickedCount
+                && disconnected == _cachedDisconnectedCount && _cachedStaticContent != null)
                 return _cachedStaticContent;
 
             _cachedDraftActive = draftActive;
             _cachedPickedCount = picked;
+            _cachedDisconnectedCount = disconnected;
             _cachedStaticContent = BuildStaticRows(total, picked);
             return _cachedStaticContent;
         }
@@ -108,7 +111,7 @@ namespace DraftMode
         {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine();
-            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"<size=64%><color=#6B7178>{picked} / {total}  ROLES PICKED</color></size>\n");
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"<size=64%><color=#6B7178>{picked} / {total}  {TouLocale.GetParsed("TouDraftRolesPickedLabel", "ROLES PICKED")}</color></size>\n");
             sb.AppendLine();
 
             foreach (int slot in DraftManager.TurnOrder)
@@ -126,11 +129,16 @@ namespace DraftMode
         {
             float t = Time.time;
             var sb = new StringBuilder();
+            var draftWord = TouLocale.GetParsed("TouDraftShimmerDraft", "DRAFT").ToUpperInvariant();
+            TmpSpriteUtils.CreateSpriteAsset(TouAssets.IconDraftMode.LoadAsset(),"TouMira.Gamemode.DraftMode",1.45f);
+            var modeWord = TouLocale.GetParsed("TouDraftShimmerMode", "MODE").ToUpperInvariant();
             sb.Append("<size=105%><b>");
-            sb.Append(Shimmer("DRAFT", new Color(0.36f, 0.84f, 0.89f), t, 0));
+            sb.Append(Shimmer(draftWord, new Color(1f, 0.31f, 0.31f), t, 0));
             sb.Append(' ');
-            sb.Append(Shimmer("MODE", new Color(1f, 0.31f, 0.31f), t, 6));
-            sb.Append("</b></size>");
+            sb.Append(Shimmer(modeWord, new Color(1f, 0.31f, 0.31f), t, draftWord.Length + 1));
+            sb.Append("</b></size>"); 
+            sb.Append(' ');
+            sb.Append($"<sprite name=\"TouMira.Gamemode.DraftMode\">");
             return sb.ToString();
         }
 
@@ -149,12 +157,18 @@ namespace DraftMode
 
         private static string BuildRow(int slot, DraftSlotState state, bool isMe)
         {
-            string you    = isMe ? "  <color=#8BD5F9><b>(YOU)</b></color>" : string.Empty;
+            string playerNumLabel = TouLocale.GetParsed("TouDraftPlayerNumberLabel", "Player #<num>").Replace("<num>", slot.ToString("D2", System.Globalization.CultureInfo.InvariantCulture));
+            string you    = isMe ? $"  <color=#8BD5F9><b>({TouLocale.GetParsed("TouDraftYouLabel", "YOU")})</b></color>" : string.Empty;
             string numCol = isMe ? "#8BD5F9" : "#ffee00";
+
+            if (DraftManager.IsPlayerDisconnected(state.PlayerId))
+            {
+                return $"<color={numCol}><b>{playerNumLabel}</b></color> <color=#FF5050>{TouLocale.GetParsed("TouDraftDisconnectedLabel", "DISCONNECTED")}</color>{you}";
+            }
 
             if (state.IsPickingNow && !state.HasPicked)
             {
-                return $"<color={numCol}><b>Player #{slot:D2}</b></color> <b><color=#FFFFFF> is picking...</color></b>{you}";
+                return $"<color={numCol}><b>{playerNumLabel}</b></color> <b><color=#FFFFFF> {TouLocale.GetParsed("TouDraftIsPickingLabel", "is picking...")}</color></b>{you}";
             }
 
             string statusCol, statusTxt;
@@ -164,126 +178,52 @@ namespace DraftMode
             }
             else
             {
-                return $"<color={numCol}><b>Player #{slot:D2}</b></color> <color=#ffffff>is waiting</color>";
+                return $"<color={numCol}><b>{playerNumLabel}</b></color> <color=#ffffff>{TouLocale.GetParsed("TouDraftIsWaitingLabel", "is waiting")}</color>";
             }
 
-            string row = $"<color={numCol}><b>Player #{slot:D2}</b></color> picked <b><color={statusCol}>{statusTxt}</color></b>{you}";
+            string row = $"<color={numCol}><b>{playerNumLabel}</b></color> {TouLocale.GetParsed("TouDraftPickedLabel", "picked")} <b><color={statusCol}>{statusTxt}</color></b>{you}";
             if (isMe)
                 return $"<mark=#8BD5F910>{row}</mark>";
             return row;
         }
 
         private static (string text, string colorHex) GetStatusLabelForRole(ushort roleId)
-{
-    RoleBehaviour role = roleId != 0
-        ? MiscUtils.GetRegisteredRole((AmongUs.GameOptions.RoleTypes)roleId)
-          ?? RoleManager.Instance.GetRole((AmongUs.GameOptions.RoleTypes)roleId)
-        : null!;
-
-    if (role == null)
-    {
-        // Unknown/unresolved role id — fail safe instead of crashing every frame.
-        MiscUtils.LogInfo(TownOfUsEventHandlers.LogLevel.Warning,
-            $"[DraftSidebar] Could not resolve role for id {roleId}; falling back.");
-        return ("UNKNOWN", "#f7f7f7");
-    }
-
-    var faction = DraftUiManager.GetTeamLabel(role);
-    string colorHex;
-    string sprite = faction switch
-    {
-        "Crewmate" => $"<sprite name=\"AmongUs.Role.Crewmate\">",
-        "Impostor" => $"<sprite name=\"AmongUs.Role.Impostor\">",
-        "Neutral"  => $"<sprite name=\"AmongUs.Role.Custom\">",
-        _ => "",
-    };
-    var displayMode = OptionGroupSingleton<DraftOptions>.Instance.DraftSidebarDisplay.Value;
-    string text = displayMode switch
-    {
-        DraftRecapMode.Alignment => $"{MiscUtils.GetParsedRoleAlignment(role).ToString().ToUpperInvariant()} {sprite}",
-        DraftRecapMode.Role      => $"{role.GetRoleName().ToUpperInvariant()} {MiscUtils.GetRoleTmpIcon(role)}",
-        DraftRecapMode.Faction   => $"{faction.ToUpperInvariant()} {sprite}",
-        _ => "a role",
-    };
-
-    if (displayMode == DraftRecapMode.Role)
-    {
-        colorHex = role.TeamColor != default
-            ? "#" + ColorUtility.ToHtmlStringRGB(role.TeamColor)
-            : "#5BD7E4";
-    }
-    else if (displayMode == DraftRecapMode.Nothing)
-    {
-        colorHex = "#f7f7f7";
-    }
-    else
-    {
-        colorHex = faction switch
         {
-            "Impostor" => "#FF5050",
-            "Neutral" => "#717171",
-            _ => "#5BD7E4",
-        };
+            RoleBehaviour role = roleId != 0
+                ? MiscUtils.GetRegisteredRole((AmongUs.GameOptions.RoleTypes)roleId)!
+                : null!;
+
+            if (role == null)
+            {
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Warning,
+                    $"[DraftSidebar] Could not resolve role for id {roleId}; falling back.");
+                return (TouLocale.GetParsed("TouDraftUnknownRoleStatus", "UNKNOWN"), "#f7f7f7");
+            }
+
+            var faction = DraftUiManager.GetTeamLabel(role);
+            string colorHex = "";
+            var displayMode = OptionGroupSingleton<RoleOptions>.Instance.DraftSidebarDisplay.Value;
+            string text = displayMode switch
+            {
+                DraftRecapMode.Alignment => $"{MiscUtils.GetParsedRoleAlignment(role).ToUpperInvariant()} <sprite name=\"AmongUs.Role.{faction}\">",
+                DraftRecapMode.Role      => $"{role.GetRoleName().ToUpperInvariant()} {MiscUtils.GetRoleTmpIcon(role)}",
+                DraftRecapMode.Faction   => $"{faction.ToUpperInvariant()} <sprite name=\"AmongUs.Role.{faction}\">",
+                _   => TouLocale.GetParsed("TouDraftARoleLabel", "a role"),
+            };
+            if(displayMode == DraftRecapMode.Nothing)
+            {
+                colorHex = "#f7f7f7";
+
+            } else if(displayMode == DraftRecapMode.Role)
+            {
+                colorHex = "#" + role.TeamColor.ToHtmlStringRGBA();
+            } 
+            else
+            {
+                colorHex ="#" + MiscUtils.GetRoleFactionColor(role).ToHtmlStringRGBA();
+            }
+            return (text, colorHex);
     }
-
-    return (text, colorHex);
-}
-
-    [HarmonyPatch(typeof(HudManagerPatches), nameof(HudManagerPatches.UpdateRoleList))]
-    public static class DraftSidebarUpdateRoleListPatch
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
-        {
-            if (!IsActive) return;
-            DrawSidebar();
-        }
-    }
-
-    [HarmonyPatch(typeof(DraftManager), nameof(DraftManager.SetDraftStateFromHost))]
-    public static class DraftSidebarActivateOnClient
-    {
-        [HarmonyPostfix]
-        public static void Postfix() => DraftSidebarManager.Activate();
-    }
-
-    [HarmonyPatch(typeof(DraftNetworkHelper), nameof(DraftNetworkHelper.BroadcastRecap))]
-    public static class DraftSidebarDeactivateOnRecap
-    {
-        [HarmonyPostfix]
-        public static void Postfix() => DraftSidebarManager.Deactivate();
-    }
-
-    [HarmonyPatch(typeof(DraftNetworkHelper), nameof(DraftNetworkHelper.BroadcastCancelDraft))]
-    public static class DraftSidebarDeactivateOnCancel
-    {
-        [HarmonyPostfix]
-        public static void Postfix() => DraftSidebarManager.Deactivate();
-    }
-
-[HarmonyPatch(typeof(DraftStatusOverlay), nameof(DraftStatusOverlay.SetState))]
-public static class DraftSidebarDeactivateOnOverlayHidden
-{
-    [HarmonyPostfix]
-    public static void Postfix(OverlayState state)
-    {
-        // Only strip the sidebar if the UI is hidden AND the draft is completely over
-        if (state == OverlayState.Hidden && !DraftManager.IsDraftActive)
-        {
-            DraftSidebarManager.Deactivate();
-        }
-    }
-}
-
-    [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CoBegin))]
-    public static class DraftSidebarDeactivateOnIntro
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
-        {
-            DraftSidebarManager.Deactivate();
-            DraftSidebarManager.ClearBannerRef();
-        }
     }
 
     [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnDisconnected))]
@@ -292,31 +232,12 @@ public static class DraftSidebarDeactivateOnOverlayHidden
         [HarmonyPostfix]
         public static void Postfix()
         {
+            if (!DraftManager.IsDraftActive) return;
+
+            DraftCancelButton.Hide();
+            DraftShuffleButton.HideAndReset();
             DraftSidebarManager.Deactivate();
             DraftSidebarManager.ClearBannerRef();
         }
     }
-
-    [HarmonyPatch(typeof(RoleListHoverComponent), nameof(RoleListHoverComponent.Update))]
-    public static class RoleListHoverSuppressUpdate
-    {
-        [HarmonyPrefix]
-        public static bool Prefix()
-        {
-            if (DraftManager.IsDraftActive)
-            {
-                HudManagerPatches.IsHoveringRoleList = false;
-                return false;
-            }
-
-            if (DraftLobbyRoleListPatch.IsShowingDraftList())
-            {
-                HudManagerPatches.IsHoveringRoleList = false;
-                return false;
-            }
-
-            return true;
-        }
-    }
-}
 }

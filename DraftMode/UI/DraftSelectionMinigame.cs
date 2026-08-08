@@ -1,11 +1,9 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using Il2CppInterop.Runtime.Attributes;
+using MiraAPI.Utilities;
 using Reactor.Utilities;
 using Reactor.Utilities.Attributes;
 using TMPro;
-using TownOfUs;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -27,11 +25,12 @@ namespace DraftMode
 
         private GameObject _screenRoot;
         private ushort[] _offeredRoleIds;
+        private string[] _offeredRoleNames;
         private bool _hasPicked;
         private TextMeshPro _timerText;
         private GameObject _tooltipRoot;
         private TextMeshPro _tooltipText;
-        private const string PickPrompt = "<color=#FFFFFF><size=200%><b>Pick Your Role!</b></size></color>";
+        private static string PickPrompt => $"<color=#FFFFFF><size=200%><b>{TouLocale.GetParsed("TouDraftPickPrompt", "Pick Your Role!")}</b></size></color>";
         private GameObject _timerRoot;
         private GameObject _timerTrack;
         private GameObject _timerFill;
@@ -126,7 +125,7 @@ namespace DraftMode
         {
             if (_timerRoot != null)
             {
-                try { MiraAPI.Utilities.Extensions.DeepDestroy(_timerRoot, true); } catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+                try { MiraAPI.Utilities.Extensions.DeepDestroy(_timerRoot, true); } catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
                 _timerRoot = null!;
                 _timerText = null!;
                 _timerTrack = null!;
@@ -188,7 +187,7 @@ namespace DraftMode
         {
             if (_tooltipRoot != null)
             {
-                try { MiraAPI.Utilities.Extensions.DeepDestroy(_tooltipRoot, true); } catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+                try { MiraAPI.Utilities.Extensions.DeepDestroy(_tooltipRoot, true); } catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
                 _tooltipRoot = null!;
                 _tooltipText = null!;
             }
@@ -221,12 +220,13 @@ namespace DraftMode
         }
 
         [HideFromIl2Cpp]
-        public void CacheOfferedRoles(ushort[] offeredRoleIds)
+        public void CacheOfferedRoles(ushort[] offeredRoleIds, string[] offeredRoleNames = null!)
         {
             _offeredRoleIds = offeredRoleIds ?? Array.Empty<ushort>();
+            _offeredRoleNames = offeredRoleNames ?? Array.Empty<string>();
         }
 
-        public static void Show(ushort[] roleIds)
+        public static void Show(ushort[] roleIds, string[] roleNames = null!)
         {
             Hide();
             if (HudManager.Instance?.FullScreen != null)
@@ -235,6 +235,7 @@ namespace DraftMode
             DontDestroyOnLoad(go);
             Instance = go.AddComponent<DraftScreenController>();
             Instance._offeredRoleIds = roleIds ?? Array.Empty<ushort>();
+            Instance._offeredRoleNames = roleNames ?? Array.Empty<string>();
             Instance._hasPicked = false;
             Instance._cardsReady = false;
             Instance._localTimeLeft = -1f;
@@ -277,7 +278,7 @@ namespace DraftMode
             {
                 MiraAPI.Utilities.Extensions.ClearGarbageCollector();
             }
-            catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+            catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
         }
 
         private void BuildScreen()
@@ -298,12 +299,12 @@ namespace DraftMode
             }
             catch (Exception ex)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Error,$"[DraftScreenController] Bundle load failed: {ex.Message}");
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Error,$"[DraftScreenController] Bundle load failed: {ex.Message}");
             }
 
             if (prefab == null)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftScreenController] SelectRoleGame prefab not found.");
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftScreenController] SelectRoleGame prefab not found.");
                 DestroyBottomTimer();
                 DestroySelectionBackdrop();
                 MiraAPI.Utilities.Extensions.DeepDestroy(gameObject, true); Instance = null!; return;
@@ -350,7 +351,9 @@ namespace DraftMode
 
             var idList = new List<ushort>();
             if (_offeredRoleIds != null) idList.AddRange(_offeredRoleIds);
-            var cards = DraftUiManager.BuildCards(idList);
+            var nameList = new List<string>();
+            if (_offeredRoleNames != null) nameList.AddRange(_offeredRoleNames);
+            var cards = DraftUiManager.BuildCards(idList, nameList);
 
             int totalCards = cards.Count;
             float cardScale = CardScaleForCount;
@@ -496,7 +499,7 @@ namespace DraftMode
         {
             if (_selectionBackdrop != null)
             {
-                try { MiraAPI.Utilities.Extensions.DeepDestroy(_selectionBackdrop, true); } catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+                try { MiraAPI.Utilities.Extensions.DeepDestroy(_selectionBackdrop, true); } catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
                 _selectionBackdrop = null!;
                 _selectionBackdropWash = null!;
                 _selectionBackdropHorizon = null!;
@@ -755,7 +758,7 @@ namespace DraftMode
             }
             catch (Exception bex)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftScreen] BetterBloop failed: {bex.Message}");
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Error, $"[DraftScreen] BetterBloop failed: {bex.Message}");
             }
 
         }
@@ -842,8 +845,9 @@ namespace DraftMode
                     string color = urgent ? "#FF5555" : "#FFD700";
                     float timerPulse = urgent ? 1f + Mathf.Sin(Time.time * 10f) * 0.08f : 1f;
                     _timerText.transform.localScale = Vector3.one * timerPulse;
-                    _timerText.text =
-                        $"<color={color}><b>{secs} Second{(secs != 1 ? "s" : "")} Remaining</b></color>";
+                    string timerLabel = TouLocale.GetParsed("TouDraftTimerRemaining", "<secs> Second(s) Remaining")
+                        .Replace("<secs>", secs.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    _timerText.text = $"<color={color}><b>{timerLabel}</b></color>";
 
                     float timeForBar = AmongUsClient.Instance.AmHost
                         ? DraftManager.TurnTimeLeft
@@ -853,13 +857,42 @@ namespace DraftMode
             }
         }
 
+        public static byte TargetPickerId = 255;
+
         private void OnCardClicked(int index)
         {
             if (_hasPicked) return;
 
             _hasPicked = true;
-            DraftNetworkHelper.SendPickToHost(index);
+            DraftNetworkHelper.SendPickToHost(index, TargetPickerId);
             Invoke(nameof(DestroySelf), 1.2f);
+        }
+
+        public static void ShowFinalPickNotification(ushort roleId)
+        {
+            var roleName = DraftRolePool.GetRoleNameFromId(roleId);
+            if (string.IsNullOrEmpty(roleName))
+                roleName = TouLocale.GetParsed("TouDraftUnknownRoleLabel", "Unknown Role");
+
+            var roleBehaviour = roleId != 0
+                ? MiscUtils.GetRegisteredRole((AmongUs.GameOptions.RoleTypes)roleId)
+                : null;
+
+            var roleColor = roleBehaviour != null ? roleBehaviour.TeamColor : Color.white;
+            Coroutines.Start(CoShowPickNotification(roleName, roleColor));
+        }
+
+        private static IEnumerator CoShowPickNotification(string roleName, Color roleColor)
+        {
+            yield return new WaitForSeconds(1.3f);
+            if (HudManager.Instance == null) yield break;
+
+            string hex = ColorUtility.ToHtmlStringRGB(roleColor);
+
+            var notif = Helpers.CreateAndShowNotification(
+                $"You can learn about what <b><color=#{hex}>{roleName}</color></b> does by clicking the role card towards the right",
+                Color.white, new Vector3(0f, 1f, -20f), spr : TouAssets.IconDraftMode.LoadAsset());
+            notif?.AdjustNotification();
         }
 
         private static void DestroySelf() => Hide();
@@ -906,4 +939,3 @@ namespace DraftMode
         }
     }
 }
-

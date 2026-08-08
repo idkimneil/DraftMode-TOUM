@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using AmongUs.GameOptions;
 
 
@@ -35,7 +32,7 @@ namespace DraftMode
                 }
                 catch (Exception e)
                 {
-                    MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Warning, $"DraftApplier: assignment handler threw: {e}");
+                    MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Warning, $"DraftApplier: assignment handler threw: {e}");
                 }
             }
         }
@@ -45,28 +42,28 @@ namespace DraftMode
             if (!AmongUsClient.Instance.AmHost)
                 return;
 
+            if (roleId == 0)
+            {
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Warning,
+                    $"DraftApplier: roleId is 0 for player {playerId} ({roleName ?? "unknown"}), cannot assign role");
+                return;
+            }
+
             var player = PlayerControl.AllPlayerControls.ToArray()
                 .FirstOrDefault(p => p != null && p.PlayerId == playerId);
 
             if (player == null)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Warning,
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Warning,
                     $"DraftApplier: no PlayerControl found for player {playerId}, cannot assign role {roleName}");
                 return;
             }
 
-            if (roleId == 0)
-            {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Warning,
-                    $"DraftApplier: no drafted role for player {playerId} ({roleName ?? "unknown"}), forcing Crewmate so no leftover role from the normal game start survives");
-                player.RpcSetRole(RoleTypes.Crewmate);
-                return;
-            }
-
-            MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info,
+            MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info,
                 $"DraftApplier: assigning role {(!string.IsNullOrEmpty(roleName) ? roleName : $"role#{roleId}")} to player {playerId}");
 
             player.RpcSetRole((RoleTypes)roleId);
         }
     }
 }
+

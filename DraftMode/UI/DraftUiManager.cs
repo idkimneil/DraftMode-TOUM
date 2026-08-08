@@ -1,44 +1,92 @@
-using System.Collections.Generic;
 using AmongUs.GameOptions;
 using MiraAPI.GameOptions;
 using MiraAPI.Utilities;
-using DraftMode.Options;
+using TownOfUs.Options;
 using UnityEngine;
-using TownOfUs;
 
 
 namespace DraftMode
 {
     public static class DraftUiManager
     {
-        public static List<DraftRoleCard> BuildCards(List<ushort> roleIds)
+        public static List<DraftRoleCard> BuildCards(List<ushort> roleIds, List<string> roleNames = null!)
         {
             var cards = new List<DraftRoleCard>();
-            var offered = OptionGroupSingleton<DraftOptions>.Instance.OfferedRolesCount.Value;
-            int count = System.Math.Min(roleIds.Count, (int)offered);
-            for (int i = 0; i < count; i++)
+            for (int i = 0; i < roleIds.Count; i++)
             {
-                ushort id   = roleIds[i];
-                var    role = ResolveRole(id);
+                ushort id = roleIds[i];
+                var role = ResolveRole(id);
+                string fallbackName = roleNames != null && i < roleNames.Count ? roleNames[i] : string.Empty;
 
-                string displayName = role ? role.GetRoleName() : $"Role {id}";
-                string team        = role ? MiscUtils.GetParsedRoleAlignment(role!) : "Unknown";
-                Sprite icon        = role ? role.GetRoleIcon() : TouRoleIcons.RandomAny.LoadAsset();
-                Color  color       = role ? role.TeamColor : Color.white;
+                string displayName;
+                string team;
+                Sprite icon;
+                Color color;
+                DraftFaction faction;
+                string description;
 
-                cards.Add(new DraftRoleCard(displayName, team, icon, color, i, GetDraftFaction(role), GetRoleDescription(role)));
+                if (role)
+                {
+                    displayName = role.GetRoleName();
+                    team = MiscUtils.GetParsedRoleAlignment(role!);
+                    icon = role.GetRoleIcon();
+                    color = role.TeamColor;
+                    faction = GetDraftFaction(role);
+                    description = GetRoleDescription(role);
+                }
+                else if (!string.IsNullOrWhiteSpace(fallbackName))
+                {
+                    displayName = fallbackName;
+                    team = GetTeamLabelForRoleName(fallbackName);
+                    icon = TouRoleIcons.RandomAny.LoadAsset();
+                    color = GetColorForRoleName(fallbackName);
+                    faction = GetDraftFactionForRoleName(fallbackName);
+                    description = string.Empty;
+                }
+                else
+                {
+                    displayName = TouLocale.GetParsed("TouDraftUnknownRoleLabel", "Role <id>").Replace("<id>", id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    team = TouLocale.GetParsed("TouDraftUnknownTeamLabel", "Unknown");
+                    icon = TouRoleIcons.RandomAny.LoadAsset();
+                    color = Color.white;
+                    faction = DraftFaction.Other;
+                    description = string.Empty;
+                }
+
+                cards.Add(new DraftRoleCard(displayName, team, icon, color, i, faction, description));
             }
 
-            var roleOpts = OptionGroupSingleton<DraftOptions>.Instance;
+            var roleOpts = OptionGroupSingleton<RoleOptions>.Instance;
             if (roleOpts.ShowRandomOption)
                 cards.Add(new DraftRoleCard(
-                    "Random", "Random",
+                    TouLocale.Get("Random"), TouLocale.Get("Random"),
                     TouRoleIcons.RandomAny.LoadAsset(),
                     Color.white,
                     roleIds.Count,
                     DraftFaction.Other,
-                    "Locks in a completely random role for you."));
+                    TouLocale.GetParsed("TouDraftRandomDescription", "Locks in a completely random role for you.")));
             return cards;
+        }
+
+        private static string GetTeamLabelForRoleName(string roleName)
+        {
+            if (DraftRolePool.IsImpostorRoleName(roleName)) return TouLocale.Get("ImpostorKeyword");
+            if (DraftRolePool.IsNeutralRoleName(roleName)) return TouLocale.Get("NeutralKeyword");
+            return TouLocale.Get("CrewmateKeyword");
+        }
+
+        private static Color GetColorForRoleName(string roleName)
+        {
+            if (DraftRolePool.IsImpostorRoleName(roleName)) return TownOfUsColors.ImpSoft;
+            if (DraftRolePool.IsNeutralRoleName(roleName)) return TownOfUsColors.Neutral;
+            return TownOfUsColors.Crewmate;
+        }
+
+        private static DraftFaction GetDraftFactionForRoleName(string roleName)
+        {
+            if (DraftRolePool.IsImpostorRoleName(roleName)) return DraftFaction.Impostor;
+            if (DraftRolePool.IsNeutralRoleName(roleName)) return DraftFaction.Neutral;
+            return DraftFaction.Crewmate;
         }
 
         public static string GetRoleDescription(RoleBehaviour role)
@@ -55,10 +103,12 @@ namespace DraftMode
 
         public static RoleBehaviour ResolveRole(ushort roleId)
         {
+            if (roleId == (ushort)RoleTypes.Crewmate || roleId == (ushort)RoleTypes.Impostor)
+                return null!;
+
             try
             {
-                return MiscUtils.GetRegisteredRole((RoleTypes)roleId) ??
-                       RoleManager.Instance.GetRole((RoleTypes)roleId);
+                return MiscUtils.GetRegisteredRole((RoleTypes)roleId)!;
             }
             catch
             {
@@ -85,23 +135,6 @@ namespace DraftMode
             }
             return DraftFaction.Other;
         }
-        public static Color GetRoleFactionColor(RoleBehaviour role, bool useAltColors = false)
-        {
-        if (role)
-        {
-            if (role.IsCrewmate())
-            {
-                return useAltColors ? TownOfUsColors.Crewmate : Palette.CrewmateBlue;
-            }
-
-            if (role.IsImpostor())
-            {
-                return useAltColors ? TownOfUsColors.ImpSoft : TownOfUsColors.Impostor;
-            }
-        }
-
-        return TownOfUsColors.Neutral;
-    }
 
         public static string GetTeamLabel(RoleBehaviour role)
         {
@@ -123,4 +156,3 @@ namespace DraftMode
 
     }
 }
-

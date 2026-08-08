@@ -7,9 +7,7 @@ using UnityEngine;
 using Il2CppInterop.Runtime.Attributes;
 using MiraAPI.Utilities;
 using Reactor.Utilities;
-using System;
-using System.Collections.Generic;
-
+using TownOfUs.Roles.Other;
 
 namespace DraftMode
 {
@@ -90,6 +88,8 @@ namespace DraftMode
             EnsureExists();
             _instance._currentState = state;
             _instance.UpdateVisibility();
+            if (state == OverlayState.Hidden && !DraftManager.IsDraftActive)
+                DraftSidebarManager.Deactivate();
         }
 
         public static void Refresh()
@@ -101,7 +101,7 @@ namespace DraftMode
         public static void NotifyLocalPlayerPicked(ushort roleId)
         {
             EnsureExists();
-            MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info,
+            MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info,
                 $"[DraftStatusOverlay] NotifyLocalPlayerPicked roleId={roleId}");
             if (roleId != _instance._shownRoleId)
             {
@@ -130,7 +130,7 @@ namespace DraftMode
             _instance._yourNumberValue = null!;
             _instance._nowPickingLabel = null!;
             _instance._nowPickingValue = null!;
-            _instance.DestroyRoleCard();
+            _instance.DestroyRoleCardCore();
             _instance._cardTooltipRoot = null!;
             _instance._cardTooltipText = null!;
             _instance._pendingRoleId = null;
@@ -168,14 +168,14 @@ namespace DraftMode
         {
             if (HudManager.Instance == null)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Warning,
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Warning,
                     "[DraftStatusOverlay] BuildUI: HudManager.Instance is null, deferring");
                 return;
             }
 
             if (HudManager.Instance.TaskPanel == null || HudManager.Instance.TaskPanel.taskText == null)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Warning,
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Warning,
                     "[DraftStatusOverlay] BuildUI: TaskPanel/taskText not ready, deferring");
                 return;
             }
@@ -206,13 +206,13 @@ namespace DraftMode
             _root.transform.localPosition = new Vector3(0f, 0.6f, -20f);
 
             _yourNumberLabel = MakeText(_root, "YourNumberLabel", font, fontMat,
-                "YOUR NUMBER:", 2.2f, new Color(0.6f, 0.9f, 1f),
+                TouLocale.GetParsed("TouDraftYourNumberLabel", "YOUR NUMBER:"), 2.2f, new Color(0.6f, 0.9f, 1f),
                 new Vector3(0f, 0.55f, 0f), bold: false);
             _yourNumberValue = MakeText(_root, "YourNumberValue", font, fontMat,
                 "?", 5.5f, Color.white,
                 new Vector3(0f, 0.05f, 0f), bold: true);
             _nowPickingLabel = MakeText(_root, "NowPickingLabel", font, fontMat,
-                "NOW PICKING:", 1.6f, new Color(1f, 0.85f, 0.1f),
+                TouLocale.GetParsed("TouDraftNowPickingLabel", "NOW PICKING:"), 1.6f, new Color(1f, 0.85f, 0.1f),
                 new Vector3(0f, -0.55f, 0f), bold: false);
             _nowPickingValue = MakeText(_root, "NowPickingValue", font, fontMat,
                 "?", 3.0f, new Color(1f, 0.85f, 0.1f),
@@ -395,7 +395,7 @@ namespace DraftMode
             }
             catch (Exception ex)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Warning,
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Warning,
                     $"[DraftStatusOverlay] Prefab load failed: {ex.Message}");
                 return false;
             }
@@ -403,12 +403,12 @@ namespace DraftMode
 
         private void ShowRoleCard(ushort roleId)
         {
-            DestroyRoleCard();
+            DestroyRoleCardCore();
             if (!EnsureRolePrefab() || HudManager.Instance == null) return;
 
             var role = DraftUiManager.ResolveRole(roleId);
             string roleName = role ? role.GetRoleName() : $"Role {roleId}";
-            string teamName = DraftUiManager.GetTeamLabel(role);
+            string teamName = MiscUtils.GetParsedRoleAlignment(role);
             Sprite icon = role ? role.GetRoleIcon() : TouRoleIcons.RandomAny.LoadAsset();
             Color color = role ? role.TeamColor : Color.white;
             string description = DraftUiManager.GetRoleDescription(role);
@@ -419,14 +419,14 @@ namespace DraftMode
 
             if (_roleCardNewRoleObj.transform.childCount == 0)
             {
-                DestroyRoleCard();
+                DestroyRoleCardCore();
                 return;
             }
 
             var actualCard = _roleCardNewRoleObj.transform.GetChild(0);
             if (actualCard.childCount < 3)
             {
-                DestroyRoleCard();
+                DestroyRoleCardCore();
                 return;
             }
 
@@ -533,7 +533,7 @@ namespace DraftMode
                 var r = DraftUiManager.ResolveRole(roleId);
                 if (r is not TownOfUs.Modules.Wiki.IWikiDiscoverable wikiTarget)
                 {
-                    MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Warning,
+                    MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Warning,
                         $"[DraftStatusOverlay] Role {roleId} not IWikiDiscoverable");
                     return;
                 }
@@ -549,7 +549,7 @@ namespace DraftMode
             }
             catch (Exception ex)
             {
-                MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Warning,
+                MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Warning,
                     $"[DraftStatusOverlay] Wiki open failed: {ex.Message}");
                 if (_roleCardNewRoleObj != null)
                     _roleCardNewRoleObj.SetActive(true);
@@ -590,12 +590,12 @@ namespace DraftMode
 
                 if (FriendsListUI.Instance != null && FriendsListUI.Instance.IsOpen) return true;
             }
-            catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+            catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
 
             return false;
         }
 
-        private void DestroyRoleCard()
+        internal void DestroyRoleCardCore()
         {
             if (_roleCardNewRoleObj != null)
             {
@@ -603,7 +603,7 @@ namespace DraftMode
                 {
                     MiraAPI.Utilities.Extensions.DeepDestroy(_roleCardNewRoleObj, true);
                 }
-                catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+                catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
 
                 _roleCardNewRoleObj = null!;
             }
@@ -611,6 +611,11 @@ namespace DraftMode
             HideCardTooltip();
             _cardHiddenForMenu = false;
             _cardReady = false;
+        }
+
+        public static void DestroyRoleCard()
+        {
+            _instance?.DestroyRoleCardCore();
         }
 
         private void EnsureCardTooltip()
@@ -665,7 +670,7 @@ namespace DraftMode
                 {
                     MiraAPI.Utilities.Extensions.DeepDestroy(_cardTooltipRoot, true);
                 }
-                catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+                catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
             }
 
             _cardTooltipRoot = null!;
@@ -761,6 +766,11 @@ namespace DraftMode
                             pickerCount++;
                             if (pickerSlot < 0) pickerSlot = s.SlotNumber;
                             if (s.PlayerId == PlayerControl.LocalPlayer.PlayerId) isMyTurn = true;
+                            else if (AmongUsClient.Instance?.NetworkMode == NetworkModes.LocalGame || AmongUsClient.Instance?.NetworkMode == NetworkModes.FreePlay)
+                            {
+                                var p = PlayerControl.AllPlayerControls.ToArray().FirstOrDefault(x => x.PlayerId == s.PlayerId);
+                                if (p != null && AmongUsClient.Instance?.GetClient(p.OwnerId) == null) isMyTurn = true;
+                            }
                         }
 
                         if (mySlot != _cachedMySlot || pickerSlot != _cachedPickerSlot ||
@@ -798,19 +808,34 @@ namespace DraftMode
                 pickerCount++;
                 if (pickerSlot < 0) pickerSlot = s.SlotNumber;
                 if (s.PlayerId == PlayerControl.LocalPlayer.PlayerId) isMyTurn = true;
+                else if (AmongUsClient.Instance?.NetworkMode == NetworkModes.LocalGame || AmongUsClient.Instance?.NetworkMode == NetworkModes.FreePlay)
+                {
+                    var p = PlayerControl.AllPlayerControls.ToArray().FirstOrDefault(x => x.PlayerId == s.PlayerId);
+                    if (p != null && AmongUsClient.Instance?.GetClient(p.OwnerId) == null) isMyTurn = true;
+                }
             }
 
             _cachedIsMyTurn = isMyTurn;
 
             string mySlotText = mySlot > 0 ? mySlot.ToString(CultureInfo.InvariantCulture) : "?";
+            string mySlotLabelText = TouLocale.GetParsed("TouDraftYourNumberLabel", "YOUR NUMBER:");
+            bool isSpectating = SpectatorRole.TrackedSpectators.Contains(PlayerControl.LocalPlayer.Data.PlayerName);
+            if (isSpectating)
+            {
+                mySlotLabelText = TouLocale.GetParsed("TouDraftYouAreLabel", "YOU ARE");
+                mySlotText = TouLocale.GetParsed("TouDraftSpectatingValue", "SPECTATING");
+            }
+
             string pickerText = "?";
-            if (pickerCount > 1) pickerText = "MULTI";
+            if (pickerCount > 1) pickerText = TouLocale.GetParsed("TouDraftMultiLabel", "MULTI");
             else if (pickerSlot > 0) pickerText = pickerSlot.ToString(CultureInfo.InvariantCulture);
 
-            string labelText = "NOW PICKING:";
-            if (isMyTurn) labelText = "YOUR TURN!";
-            else if (pickerCount > 1) labelText = "NOW PICKING (MULTI):";
+            string labelText = TouLocale.GetParsed("TouDraftNowPickingLabel", "NOW PICKING:");
+            if (isMyTurn) labelText = TouLocale.GetParsed("TouDraftYourTurnLabel", "YOUR TURN!");
+            else if (pickerCount > 1) labelText = TouLocale.GetParsed("TouDraftNowPickingMultiLabel", "NOW PICKING (MULTI):");
 
+            if (_yourNumberLabel != null)
+                _yourNumberLabel.text = mySlotLabelText;
             if (_yourNumberValue != null)
                 _yourNumberValue.text = mySlotText;
             if (_nowPickingValue != null)
@@ -820,7 +845,7 @@ namespace DraftMode
             if (_nowPickingLabel != null)
                 _nowPickingLabel.text = labelText;
 
-            MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info,
+            MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info,
                 $"[DraftStatusOverlay] UpdateContent: localPlayerId={PlayerControl.LocalPlayer.PlayerId}, mySlot={mySlot}, pickerSlot={pickerSlot}, pickerCount={pickerCount}, isMyTurn={isMyTurn}");
         }
 
@@ -846,7 +871,7 @@ namespace DraftMode
                 _root.SetActive(false);
                 if (_bgOverlay != null) _bgOverlay.SetActive(false);
                 if (_backdropArt != null) _backdropArt.SetActive(false);
-                DestroyRoleCard();
+                DestroyRoleCardCore();
                 _pendingRoleId = null;
                 _shownRoleId = null;
                 _waitAnimTime = 0f;
@@ -916,7 +941,7 @@ namespace DraftMode
                     {
                         go.SetActive(true);
                     }
-                    catch (Exception e) { MiscUtils.LogInfo(TownOfUs.Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
+                    catch (Exception e) { MiscUtils.LogInfo(Events.TownOfUsEventHandlers.LogLevel.Info, $"Ignored Exception: {e.Message}"); }
 
             _hiddenHudChildren.Clear();
         }
