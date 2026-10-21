@@ -1,16 +1,86 @@
-# Default ignored files
-/shelf/
-/workspace.xml
-# Rider ignored files
-/modules.xml
-/.idea.DraftModeTOUM.iml
-/contentModel.xml
-/projectSettingsUpdater.xml
-# Editor-based HTTP Client requests
-/httpRequests/
-# Ignored default folder with query files
-/queries/
-# Datasource local storage ignored files
-/dataSources/
-/dataSources.local.xml
-/bin/
+# -----------------------------------------------------------------------------
+# Build output
+# -----------------------------------------------------------------------------
+bin/
+obj/
+[Bb]uild/
+[Bb]uilds/
+release/
+publish/
+*.dll
+*.pdb
+*.exe
+*.mdb
+# Keep committed reference DLLs if any (none right now, but be explicit).
+!Resources/*.dll
+
+# -----------------------------------------------------------------------------
+# NuGet
+# -----------------------------------------------------------------------------
+packages/
+*.snupkg
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+*.lock.json
+
+# -----------------------------------------------------------------------------
+# IDEs
+# -----------------------------------------------------------------------------
+.vs/
+.vscode/
+.idea/
+_ReSharper.Caches/
+riderModule.iml
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# -----------------------------------------------------------------------------
+# OS
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# -----------------------------------------------------------------------------
+# Local-only source references (kept out of the public repo)
+# These folders ship game source trees used for reading, not building.
+# -----------------------------------------------------------------------------
+/TownOfUs/
+/TOU-Mira-1.6.2
+/TouMiraRolesExtension/
+/TheOtherRolesGMIA-main/
+/wiki/
+/Documentation/
+# -----------------------------------------------------------------------------
+# Local secrets (never commit tokens)
+# -----------------------------------------------------------------------------
+.env
+.env.*
+
+# -----------------------------------------------------------------------------
+# Local tool state / scratch
+# -----------------------------------------------------------------------------
+.specstory/
+.qodo/
+.cursor/
+.cursorindexingignore
+terminals/
+agent-tools/
+agent-transcripts/
+graphify-out/
+.fake/
+*.log
+*.tmp
+.claude/*
+.agents/*
+graphify-out/*
+skills-lock.json
+# Personal TODO scratchpads
+lockdown timer*.txt
+todo.txt
+TODO.txt
+/scripts/GitHub-RepoActivity.ps1
