@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net6.0</TargetFramework>
+        <LangVersion>preview</LangVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>true</ImplicitUsings>
+        <AssemblyName>DraftFix</AssemblyName>
+        <RootNamespace>DraftFix</RootNamespace>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+        <RestoreLockedMode>false</RestoreLockedMode>
+        <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+        <Configurations>Debug;Release;Publish</Configurations>
+        <NoWarn>$(NoWarn);CS8618;CS8600;CS8601;CS8602;CS8603;CS8604;CS8625</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="TownOfUsMira" Version="1.7.9-beta1" />
+        <PackageReference Include="AllOfUs.MiraAPI" Version="0.6.0"/>
+        <PackageReference Include="Reactor" Version="2.5.0-ci.371" PrivateAssets="all"/>
+        <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.735" PrivateAssets="all" ExcludeAssets="runtime;native"/>
+        <PackageReference Include="AmongUs.GameLibs.Steam" Version="2026.9.29" PrivateAssets="all"/>
+        <PackageReference Include="BepInEx.IL2CPP.MSBuild" Version="2.1.0-rc.1" PrivateAssets="all" ExcludeAssets="runtime"/>
+    </ItemGroup>
+
+    <Target Name="Copy" AfterTargets="Build" Condition="'$(AmongUs)' != ''">
+        <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AmongUs)/BepInEx/plugins/" UseSymboliclinksIfPossible="true"/>
+    </Target>
+</Project>
