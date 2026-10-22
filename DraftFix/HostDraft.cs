@@ -69,6 +69,7 @@ internal static class HostDraft
         _turn = 0;
         _running = true;
 
+        DraftHostFixPlugin.Logger.LogInfo($"Host draft engine started for {pidToSlot.Count} players");
         DraftManager.SetDraftStateFromHost(pidToSlot.Count, pidToSlot.Keys.ToList(), pidToSlot.Values.ToList());
         DraftNetworkHelper.BroadcastSlotNotifications(pidToSlot.Count, pidToSlot);
         DraftCancelButton.Show();
@@ -378,7 +379,18 @@ internal static class HostDraft
         var state = DraftManager.GetStateForSlot(slot);
         if (state == null || state.HasPicked) return;
 
+        if (copy == null)
+        {
+            copy = _pool.FirstOrDefault();
+            DraftHostFixPlugin.Logger.LogWarning($"No legal role for slot {slot}, using any remaining pool role");
+        }
+
         var roleId = copy?.RoleId ?? (ushort)0;
+        if (roleId == 0)
+        {
+            DraftHostFixPlugin.Logger.LogError($"Slot {slot} ended with role id 0, the pool is empty");
+        }
+
         Offers.Remove(slot);
         ClearPending(state);
         state.IsPickingNow = false;
@@ -432,6 +444,12 @@ internal static class HostDraft
         DraftNetworkHelper.BroadcastRecap(entries, mode);
 
         var start = AccessTools.Method(typeof(DraftEngineBehaviour), "CoAutoStartGame");
+        if (start == null)
+        {
+            DraftHostFixPlugin.Logger.LogError("CoAutoStartGame was not found, the game will not auto start");
+            return;
+        }
+
         Coroutines.Start((IEnumerator)start.Invoke(null, [mode != DraftRecapMode.Nothing ? 6f : 0f])!);
     }
 }
