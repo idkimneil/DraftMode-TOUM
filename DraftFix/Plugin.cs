@@ -14,7 +14,7 @@ namespace DraftFix;
 [BepInDependency(TownOfUsPlugin.Id)]
 public sealed class DraftHostFixPlugin : BasePlugin
 {
-    public const string Id = "com.drafthostfix.idkimneil";
+    public const string Id = "tou.drafthostfix";
 
     internal static ManualLogSource Logger = null!;
     internal static ConfigEntry<bool> ReassertPicks = null!;
@@ -22,8 +22,9 @@ public sealed class DraftHostFixPlugin : BasePlugin
     public override void Load()
     {
         Logger = Log;
-        ReassertPicks = Config.Bind("Draft", "ReassertPicks", true,
+        ReassertPicks = Config.Bind("Draft", "ReassertPicks", false,
             "After roles are assigned, re-apply any drafted role that was changed. Off by default because Crewpostor and similar settings rewrite roles on purpose. Mismatches are always logged.");
         new Harmony(Id).PatchAll();
+        Log.LogInfo("Draft host fix loaded");
     }
 }
