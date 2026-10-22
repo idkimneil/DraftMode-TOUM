@@ -1,5 +1,8 @@
 using HarmonyLib;
+using MiraAPI.GameOptions;
+using Reactor.Networking.Rpc;
 using TownOfUs.Modules.DraftMode;
+using TownOfUs.Options;
 using TownOfUs.Utilities;
 
 namespace DraftFix;
@@ -46,6 +49,43 @@ internal static class CancelDraftPatch
     }
 }
 
+[HarmonyPatch(typeof(DraftNetworkHelper), nameof(DraftNetworkHelper.BroadcastPickConfirmed))]
+internal static class BroadcastPickConfirmedPatch
+{
+    public static bool Prefix(int slot, ushort roleId, bool timedOut)
+    {
+        if (!AmongUsClient.Instance.AmHost) return true;
+
+        var pickerId = DraftManager.GetStateForSlot(slot)?.PlayerId;
+        var hide = OptionGroupSingleton<RoleOptions>.Instance.DraftSidebarDisplay.Value == DraftRecapMode.Nothing;
+        var rpc = Rpc<DraftPickConfirmedRpc>.Instance;
+
+        foreach (var client in AmongUsClient.Instance.allClients.ToArray())
+        {
+            if (client == null || client.Id == AmongUsClient.Instance.ClientId) continue;
+
+            var isPicker = pickerId.HasValue && client.Character != null && client.Character.PlayerId == pickerId.Value;
+            var publicRoleId = hide && !isPicker ? (ushort)0 : roleId;
+            rpc.SendTo(PlayerControl.LocalPlayer, client.Id,
+                new DraftPickConfirmedData { Slot = slot, RoleId = publicRoleId, TimedOut = timedOut });
+        }
+
+        var localSlot = DraftManager.GetSlotForPlayer(PlayerControl.LocalPlayer.PlayerId);
+        if (slot == localSlot)
+        {
+            DraftScreenController.Hide();
+            if (roleId != 0)
+            {
+                DraftScreenController.ShowFinalPickNotification(roleId);
+            }
+        }
+
+        DraftSidebarManager.InvalidateCache();
+        DraftStatusOverlay.Refresh();
+        return false;
+    }
+}
+
 [HarmonyPatch(typeof(RoleManager), nameof(RoleManager.SelectRoles))]
 internal static class VerifyDraftedRolesPatch
 {
@@ -53,23 +93,32 @@ internal static class VerifyDraftedRolesPatch
     [HarmonyPriority(Priority.Last)]
     public static void Postfix()
     {
-        if (!AmongUsClient.Instance.AmHost || HostDraft.FinalPicks.Count == 0) return;
-
-        foreach (var (playerId, roleId) in HostDraft.FinalPicks)
+        try
         {
-            var player = MiscUtils.PlayerById(playerId);
-            if (player == null || player.Data?.Role == null || roleId == 0) continue;
-            if ((ushort)player.Data.Role.Role == roleId) continue;
+            if (!AmongUsClient.Instance.AmHost || HostDraft.FinalPicks.Count == 0) return;
 
-            DraftHostFixPlugin.Logger.LogWarning(
-                $"Player {playerId} drafted role {roleId} but ended with {(ushort)player.Data.Role.Role} ({player.Data.Role.NiceName})");
-
-            if (DraftHostFixPlugin.ReassertPicks.Value)
+            foreach (var (playerId, roleId) in HostDraft.FinalPicks)
             {
-                player.RpcSetRole((AmongUs.GameOptions.RoleTypes)roleId);
+                var player = MiscUtils.PlayerById(playerId);
+                if (player == null || player.Data?.Role == null || roleId == 0) continue;
+                if ((ushort)player.Data.Role.Role == roleId) continue;
+
+                DraftHostFixPlugin.Logger.LogWarning(
+                    $"Player {playerId} drafted role {roleId} but ended with {(ushort)player.Data.Role.Role} ({player.Data.Role.NiceName})");
+
+                if (DraftHostFixPlugin.ReassertPicks.Value)
+                {
+                    player.RpcSetRole((AmongUs.GameOptions.RoleTypes)roleId);
+                }
             }
         }
-
-        HostDraft.FinalPicks.Clear();
+        catch (Exception e)
+        {
+            DraftHostFixPlugin.Logger.LogError($"Draft role verification failed: {e}");
+        }
+        finally
+        {
+            HostDraft.FinalPicks.Clear();
+        }
     }
 }
