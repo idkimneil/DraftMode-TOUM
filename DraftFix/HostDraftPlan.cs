@@ -1,4 +1,5 @@
 using MiraAPI.GameOptions;
+using TownOfUs.Modules.DraftMode;
 using TownOfUs.Options;
 using TownOfUs.Roles;
 using TownOfUs.Utilities;
@@ -7,10 +8,13 @@ using Random = UnityEngine.Random;
 
 namespace DraftFix;
 
+internal sealed record DraftSpreadOffer(DraftFaction Faction, bool Forced);
+
 internal sealed class DraftPlan
 {
     private readonly List<RoleAlignment[]> _seats;
     private readonly Dictionary<RoleAlignment, int> _caps;
+    private readonly Dictionary<RoleAlignment, int> _extraCrewCaps = [];
 
     private DraftPlan(List<RoleAlignment[]> seats, Dictionary<RoleAlignment, int> caps)
     {
@@ -88,6 +92,82 @@ internal sealed class DraftPlan
     private static int Capacity(RoleAlignment[] alignments, Dictionary<RoleAlignment, int> caps, List<DraftCopy> pool)
     {
         return alignments.Sum(a => Math.Min(caps[a], pool.Count(x => x.Alignment == a)));
+    }
+
+    internal List<DraftSpreadOffer?> AssignSpreadOffers(IReadOnlyList<DraftCopy> picks, int activePicks)
+    {
+        var deficits = new Dictionary<DraftFaction, int>
+        {
+            [DraftFaction.Impostor] = RequiredSeats(DraftFaction.Impostor) -
+                picks.Where(x => IsFaction(x.Alignment, DraftFaction.Impostor)).Sum(x => x.Weight),
+            [DraftFaction.Neutral] = RequiredSeats(DraftFaction.Neutral) -
+                picks.Where(x => IsFaction(x.Alignment, DraftFaction.Neutral)).Sum(x => x.Weight)
+        };
+        foreach (var faction in deficits.Keys.ToList())
+        {
+            deficits[faction] = Math.Max(0, deficits[faction]);
+        }
+
+        var offers = Enumerable.Repeat<DraftSpreadOffer?>(null, activePicks).ToList();
+        var slots = Enumerable.Range(0, activePicks).ToList();
+        Shuffle(slots);
+        var offersToSchedule = Math.Min(deficits.Values.Sum(), activePicks);
+        for (var i = 0; i < offersToSchedule; i++)
+        {
+            var deficit = deficits.Values.Sum();
+            var roll = Random.RandomRangeInt(0, deficit);
+            var factionToLock = roll < deficits[DraftFaction.Impostor] ? DraftFaction.Impostor : DraftFaction.Neutral;
+            offers[slots[i]] = new DraftSpreadOffer(factionToLock, true);
+            deficits[factionToLock]--;
+        }
+
+        return offers;
+    }
+
+    internal static bool IsFaction(RoleAlignment alignment, DraftFaction faction) => faction switch
+    {
+        DraftFaction.Impostor => HostDraftPool.Impostor.Contains(alignment),
+        DraftFaction.Neutral => HostDraftPool.Neutral.Contains(alignment),
+        DraftFaction.Crewmate => HostDraftPool.Crew.Contains(alignment),
+        _ => false
+    };
+
+    internal int RemainingSpreadNeed(IReadOnlyList<DraftCopy> picks, DraftFaction faction)
+    {
+        var pickedWeight = picks.Where(copy => IsFaction(copy.Alignment, faction)).Sum(copy => copy.Weight);
+        return Math.Max(0, RequiredSeats(faction) - pickedWeight);
+    }
+
+    private int RequiredSeats(DraftFaction faction)
+    {
+        return _seats.Count(seat => seat.Length > 0 && seat.All(alignment => IsFaction(alignment, faction)));
+    }
+
+    internal void AddCrewSeats(int count, IReadOnlyList<DraftCopy> pool)
+    {
+        if (_caps.Count > 0)
+        {
+            var alignment = HostDraftPool.Crew
+                .OrderByDescending(candidate => pool.Count(copy => copy.Alignment == candidate) - _caps.GetValueOrDefault(candidate))
+                .ThenByDescending(candidate => pool.Count(copy => copy.Alignment == candidate))
+                .FirstOrDefault();
+            _caps[alignment] = _caps.GetValueOrDefault(alignment) + count;
+            _extraCrewCaps[alignment] = _extraCrewCaps.GetValueOrDefault(alignment) + count;
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            _seats.Add(HostDraftPool.Crew);
+        }
+    }
+
+    private static void Shuffle<T>(IList<T> items)
+    {
+        for (var i = items.Count - 1; i > 0; i--)
+        {
+            var j = Random.RandomRangeInt(0, i + 1);
+            (items[i], items[j]) = (items[j], items[i]);
+        }
     }
 
     internal bool CanComplete(IReadOnlyList<DraftCopy> picks, IEnumerable<DraftCopy> supply)
