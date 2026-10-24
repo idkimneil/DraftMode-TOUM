@@ -38,6 +38,7 @@ internal static class HostDraft
     private static int _turn;
     private static float _deadline;
     private static int _doubleDraftCrewSlotsRemaining;
+    private static bool _finalPickNotificationShown;
 
     internal static Dictionary<byte, ushort> FinalPicks { get; } = [];
 
@@ -91,8 +92,17 @@ internal static class HostDraft
         ShufflesUsed.Clear();
         AnnouncedAt.Clear();
         Resent.Clear();
+        _finalPickNotificationShown = false;
         SpreadOffers.Clear();
         _doubleDraftCrewSlotsRemaining = 0;
+    }
+
+    internal static bool TryMarkFinalPickNotificationShown()
+    {
+        if (_finalPickNotificationShown) return false;
+
+        _finalPickNotificationShown = true;
+        return true;
     }
 
     internal static void OnPick(byte playerId, byte index, ushort roleId)
@@ -501,6 +511,8 @@ internal static class HostDraft
 
     private static void Finish()
     {
+        if (!_running) return;
+
         _running = false;
         var mode = Opts.DraftRecap.Value;
         var entries = new List<RecapEntry>();
