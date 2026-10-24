@@ -19,6 +19,7 @@ internal static class HostDraft
     private const float ReadyResendDelay = 2.5f;
     private const float MinShuffleWindow = 5f;
     private const float DiversityPenalty = 0.3f;
+    private const float OptionalHostileOfferChance = 0.5f;
 
     private static readonly Dictionary<int, DraftCopy> Picked = [];
     private static readonly Dictionary<int, List<ushort>> Offers = [];
@@ -27,13 +28,16 @@ internal static class HostDraft
     private static readonly Dictionary<int, float> AnnouncedAt = [];
     private static readonly HashSet<int> Resent = [];
     private static readonly Dictionary<ushort, RoleBehaviour?> Roles = [];
+    private static readonly Dictionary<int, DraftSpreadOffer> SpreadOffers = [];
 
+    private static List<DraftCopy> _basePool = [];
     private static List<DraftCopy> _pool = [];
     private static DraftPlan _plan = null!;
     private static bool _running;
     private static int _session;
     private static int _turn;
     private static float _deadline;
+    private static int _doubleDraftCrewSlotsRemaining;
 
     internal static Dictionary<byte, ushort> FinalPicks { get; } = [];
 
@@ -56,16 +60,16 @@ internal static class HostDraft
         Stop();
         FinalPicks.Clear();
 
-        var basePool = HostDraftPool.Build();
-        if (basePool.Count == 0)
+        _basePool = HostDraftPool.Build();
+        if (_basePool.Count == 0)
         {
             DraftHostFixPlugin.Logger.LogWarning("Role pool is empty, leaving draft start to the original engine");
             return false;
         }
 
         Roles.Clear();
-        _plan = DraftPlan.Create(pidToSlot.Count, basePool);
-        _pool = [.. basePool];
+        _plan = DraftPlan.Create(pidToSlot.Count, _basePool);
+        _pool = [.. _basePool];
         _turn = 0;
         _running = true;
 
@@ -87,6 +91,8 @@ internal static class HostDraft
         ShufflesUsed.Clear();
         AnnouncedAt.Clear();
         Resent.Clear();
+        SpreadOffers.Clear();
+        _doubleDraftCrewSlotsRemaining = 0;
     }
 
     internal static void OnPick(byte playerId, byte index, ushort roleId)
@@ -99,7 +105,7 @@ internal static class HostDraft
         var slot = state.SlotNumber;
         if (roleId == 0 && index == offer.Count && Opts.ShowRandomOption.Value)
         {
-            Commit(slot, Choose(Legal(slot, true), 1).FirstOrDefault() ?? Choose(Legal(slot, false), 1).FirstOrDefault(), false);
+            Commit(slot, Choose(Offerable(slot), 1).FirstOrDefault() ?? Choose(Legal(slot, false), 1).FirstOrDefault(), false);
             return;
         }
 
@@ -148,8 +154,21 @@ internal static class HostDraft
             _deadline = Time.time + duration;
 
             var batch = pending.Take(concurrency).ToList();
+            var forcedCrewSlots = pending.TakeLast(Math.Min(_doubleDraftCrewSlotsRemaining, pending.Count)).ToHashSet();
+            var scheduledSlots = pending.Where(slot => !forcedCrewSlots.Contains(slot)).ToList();
+            var spreadOffers = _plan.AssignSpreadOffers(Picked.Values.ToList(), scheduledSlots.Count);
             foreach (var slot in batch)
             {
+                SpreadOffers.Remove(slot);
+                if (forcedCrewSlots.Contains(slot))
+                {
+                    SpreadOffers[slot] = new DraftSpreadOffer(DraftFaction.Crewmate, true);
+                }
+                else if (spreadOffers[scheduledSlots.IndexOf(slot)] is { } spreadOffer)
+                {
+                    SpreadOffers[slot] = spreadOffer;
+                }
+
                 Seen[slot] = [];
                 Offer(slot);
             }
@@ -280,6 +299,66 @@ internal static class HostDraft
             .ToList();
     }
 
+    private static List<DraftCopy> Offerable(int slot)
+    {
+        var legal = Legal(slot, true);
+        var picks = Picked.Values.ToList();
+        var spreadOffer = SpreadOffers.GetValueOrDefault(slot);
+        var factionChoices = spreadOffer == null
+            ? []
+            : legal.Where(copy => DraftPlan.IsFaction(copy.Alignment, spreadOffer.Faction)).ToList();
+
+        if (spreadOffer != null)
+        {
+            if (factionChoices.Count == 0)
+            {
+                SpreadOffers.Remove(slot);
+                return legal;
+            }
+
+            var otherForcedOffers = SpreadOffers
+                .Count(pair => pair.Key != slot && pair.Value.Faction == spreadOffer.Faction && !Offers.ContainsKey(pair.Key) && IsOpen(pair.Key));
+            var maxOptions = Math.Max(1, factionChoices.Count - otherForcedOffers);
+            return Choose(factionChoices, Math.Min((int)Opts.OfferedRolesCount.Value, maxOptions));
+        }
+
+        var candidates = legal.Where(copy =>
+            !DraftPlan.IsFaction(copy.Alignment, DraftFaction.Impostor) &&
+            !DraftPlan.IsFaction(copy.Alignment, DraftFaction.Neutral)).ToList();
+        if (Random.value < OptionalHostileOfferChance)
+        {
+            var optionalFactionChoices = legal.Where(copy =>
+            {
+                var faction = DraftPlan.IsFaction(copy.Alignment, DraftFaction.Impostor)
+                    ? DraftFaction.Impostor
+                    : DraftFaction.Neutral;
+                return DraftPlan.IsFaction(copy.Alignment, faction) && _plan.RemainingSpreadNeed(picks, faction) == 0;
+            }).ToList();
+            var nudge = Choose(optionalFactionChoices, 1).FirstOrDefault();
+            if (nudge != null)
+            {
+                candidates.Add(nudge);
+            }
+        }
+
+        if (candidates.Count > 0)
+        {
+            return candidates;
+        }
+
+        if (legal.Count == 0)
+        {
+            return legal;
+        }
+
+        var neededFaction = new[] { DraftFaction.Impostor, DraftFaction.Neutral }
+            .Where(faction => _plan.RemainingSpreadNeed(picks, faction) > 0)
+            .OrderByDescending(faction => _plan.RemainingSpreadNeed(picks, faction))
+            .FirstOrDefault();
+        var neededChoices = legal.Where(copy => DraftPlan.IsFaction(copy.Alignment, neededFaction)).ToList();
+        return neededChoices.Count > 0 ? Choose(neededChoices, 1) : legal;
+    }
+
     private static List<DraftCopy> RandomCrewBucket(int slot, bool respectReserved)
     {
         return Legal(slot, respectReserved).Where(x => HostDraftPool.Crew.Contains(x.Alignment)).ToList();
@@ -322,7 +401,7 @@ internal static class HostDraft
         var seen = Seen.TryGetValue(slot, out var known) ? known : Seen[slot] = [];
         var count = Math.Max(1, (int)Opts.OfferedRolesCount.Value);
 
-        var preferred = Legal(slot, true);
+        var preferred = Offerable(slot);
         var chosen = Choose(preferred.Where(x => !seen.Contains(x.RoleId)).ToList(), count);
         if (chosen.Count < count)
         {
@@ -371,7 +450,7 @@ internal static class HostDraft
         var offer = Offers.GetValueOrDefault(slot) ?? [];
         var roleId = offer.Count > 0 ? offer[Random.RandomRangeInt(0, offer.Count)] : (ushort)0;
         var copy = _pool.FirstOrDefault(x => offer.Count > 0 && x.RoleId == roleId);
-        Commit(slot, copy ?? Choose(Legal(slot, true), 1).FirstOrDefault() ?? Choose(Legal(slot, false), 1).FirstOrDefault(), true);
+        Commit(slot, copy ?? Choose(Offerable(slot), 1).FirstOrDefault() ?? Choose(Legal(slot, false), 1).FirstOrDefault(), true);
     }
 
     private static void Commit(int slot, DraftCopy? copy, bool timedOut)
@@ -391,14 +470,27 @@ internal static class HostDraft
             DraftHostFixPlugin.Logger.LogError($"Slot {slot} ended with role id 0, the pool is empty");
         }
 
+        var fulfillsCrewSeat = SpreadOffers.TryGetValue(slot, out var spreadOffer) && spreadOffer.Faction == DraftFaction.Crewmate;
         Offers.Remove(slot);
+        SpreadOffers.Remove(slot);
         ClearPending(state);
         state.IsPickingNow = false;
+
+        if (fulfillsCrewSeat)
+        {
+            _doubleDraftCrewSlotsRemaining = Math.Max(0, _doubleDraftCrewSlotsRemaining - 1);
+        }
 
         if (copy != null)
         {
             Picked[slot] = copy;
             Take(copy);
+            if (copy.Weight > 1)
+            {
+                var extraSeats = copy.Weight - 1;
+                _plan.AddCrewSeats(extraSeats, _basePool);
+                _doubleDraftCrewSlotsRemaining += extraSeats;
+            }
         }
 
         FinalPicks[state.PlayerId] = roleId;
