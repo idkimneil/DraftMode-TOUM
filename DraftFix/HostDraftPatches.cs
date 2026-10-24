@@ -71,18 +71,24 @@ internal static class BroadcastPickConfirmedPatch
         }
 
         var localSlot = DraftManager.GetSlotForPlayer(PlayerControl.LocalPlayer.PlayerId);
-        if (slot == localSlot)
+        if (slot == localSlot && roleId != 0)
         {
             DraftScreenController.Hide();
-            if (roleId != 0)
-            {
-                DraftScreenController.ShowFinalPickNotification(roleId);
-            }
+            DraftScreenController.ShowFinalPickNotification(roleId);
         }
 
         DraftSidebarManager.InvalidateCache();
         DraftStatusOverlay.Refresh();
         return false;
+    }
+}
+
+[HarmonyPatch(typeof(DraftScreenController), nameof(DraftScreenController.ShowFinalPickNotification))]
+internal static class FinalPickNotificationPatch
+{
+    public static bool Prefix()
+    {
+        return !AmongUsClient.Instance.AmHost || HostDraft.TryMarkFinalPickNotificationShown();
     }
 }
 
